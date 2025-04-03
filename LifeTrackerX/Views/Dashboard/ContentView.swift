@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var historyManager = StatsHistoryManager()
     @State private var showingAddEntrySheet = false
+    @State private var showingSettingsSheet = false
     
     // Computed properties to get latest values or nil
     private var weight: Double? {
@@ -33,7 +34,9 @@ struct ContentView: View {
                         .font(.title.bold())
                         .foregroundColor(.white)
                     Spacer()
-                    Button(action: signOut) {
+                    Button(action: {
+                        showingSettingsSheet = true
+                    }) {
                         Image(systemName: "person.circle.fill")
                             .resizable()
                             .frame(width: 30, height: 30)
@@ -88,9 +91,8 @@ struct ContentView: View {
         .sheet(isPresented: $showingAddEntrySheet) {
             TrackDataView(historyManager: historyManager)
         }
-    }
-    
-    func signOut() {
-        print("User signed out")
+        .sheet(isPresented: $showingSettingsSheet) {
+            SettingsView()
+        }
     }
 }
