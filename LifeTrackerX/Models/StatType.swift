@@ -20,4 +20,12 @@ enum StatType: String, Codable, CaseIterable, Identifiable {
         case .bodyFat: return "Body Fat"
         }
     }
+    
+    var appleHealthIdentifier: String {
+        switch self {
+        case .weight: return "HKQuantityTypeIdentifierBodyMass"
+        case .height: return "HKQuantityTypeIdentifierHeight"
+        case .bodyFat: return "HKQuantityTypeIdentifierBodyFatPercentage"
+        }
+    }
 }
