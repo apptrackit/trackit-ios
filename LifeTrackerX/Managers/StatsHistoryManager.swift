@@ -10,13 +10,17 @@ class StatsHistoryManager: ObservableObject {
     }
     
     func addEntry(_ entry: StatEntry) {
+        // Only replace if the entry is from the same source, otherwise keep both
         if let index = entries.firstIndex(where: {
-            Calendar.current.isDate($0.date, inSameDayAs: entry.date) && $0.type == entry.type
+            Calendar.current.isDate($0.date, inSameDayAs: entry.date) &&
+            $0.type == entry.type &&
+            $0.source == entry.source
         }) {
             entries[index] = entry
         } else {
             entries.append(entry)
         }
+        
         entries.sort { $0.date > $1.date }
         saveEntries()
     }
@@ -38,6 +42,7 @@ class StatsHistoryManager: ObservableObject {
         if let latest = typeEntries.sorted(by: { $0.date > $1.date }).first {
             return latest.value
         }
+        
         return nil
     }
     
