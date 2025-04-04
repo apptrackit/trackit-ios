@@ -10,7 +10,15 @@ class StatsHistoryManager: ObservableObject {
     }
     
     func addEntry(_ entry: StatEntry) {
-        // Only replace if the entry is from the same source, otherwise keep both
+        // Need to ensure we're on the main thread when modifying @Published properties
+        if !Thread.isMainThread {
+            DispatchQueue.main.async {
+                self.addEntry(entry)
+            }
+            return
+        }
+        
+        // Only replace if the entry has the same date, type and source
         if let index = entries.firstIndex(where: {
             Calendar.current.isDate($0.date, inSameDayAs: entry.date) &&
             $0.type == entry.type &&
@@ -21,16 +29,31 @@ class StatsHistoryManager: ObservableObject {
             entries.append(entry)
         }
         
+        // Sort entries by date (newest first)
         entries.sort { $0.date > $1.date }
         saveEntries()
     }
     
     func removeEntry(_ entry: StatEntry) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async {
+                self.removeEntry(entry)
+            }
+            return
+        }
+        
         entries.removeAll { $0.id == entry.id }
         saveEntries()
     }
     
     func updateEntry(_ entry: StatEntry) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async {
+                self.updateEntry(entry)
+            }
+            return
+        }
+        
         if let index = entries.firstIndex(where: { $0.id == entry.id }) {
             entries[index] = entry
             saveEntries()
@@ -42,7 +65,6 @@ class StatsHistoryManager: ObservableObject {
         if let latest = typeEntries.sorted(by: { $0.date > $1.date }).first {
             return latest.value
         }
-        
         return nil
     }
     
@@ -61,5 +83,11 @@ class StatsHistoryManager: ObservableObject {
            let decoded = try? JSONDecoder().decode([StatEntry].self, from: data) {
             entries = decoded
         }
+    }
+    
+    // Debug function to clear all entries
+    func clearAllEntries() {
+        entries.removeAll()
+        saveEntries()
     }
 }

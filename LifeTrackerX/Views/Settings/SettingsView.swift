@@ -91,6 +91,9 @@ struct SettingsView: View {
 struct HealthAccessView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var healthManager: HealthManager
+    @StateObject private var historyManager = StatsHistoryManager()
+    @State private var showDebugInfo = false
+    @State private var isLoading = false
     
     var body: some View {
         NavigationStack {
@@ -106,7 +109,7 @@ struct HealthAccessView: View {
                     .font(.title2)
                     .fontWeight(.bold)
                 
-                Text("This app needs access to your health data to provide accurate tracking and insights. We request permission to read and write the following data:")
+                Text("This app needs access to your health data to provide accurate tracking and insights.")
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
                 
@@ -114,17 +117,11 @@ struct HealthAccessView: View {
                     HealthDataTypeRow(icon: "scalemass.fill", title: "Weight", description: "Track your weight changes over time")
                     HealthDataTypeRow(icon: "ruler.fill", title: "Height", description: "Used for BMI calculations")
                     HealthDataTypeRow(icon: "person.fill", title: "Body Fat Percentage", description: "Monitor body composition")
-                    HealthDataTypeRow(icon: "heart.fill", title: "Steps", description: "Track your daily activity")
                 }
                 .padding()
                 .background(Color(.systemGray6))
                 .cornerRadius(12)
                 .padding(.horizontal)
-                
-                Text("Your health data is kept private and secure. We only access the data you explicitly authorize.")
-                    .font(.caption)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
                 
                 Button(action: {
                     healthManager.requestHealthAuthorization()
@@ -138,6 +135,79 @@ struct HealthAccessView: View {
                         .cornerRadius(12)
                 }
                 .padding(.horizontal)
+                
+                if healthManager.isAuthorized {
+                    HStack {
+                        Button(action: {
+                            isLoading = true
+                            historyManager.clearAllEntries() // Clear existing data for clean test
+                            healthManager.importAllHealthData(historyManager: historyManager) { success in
+                                isLoading = false
+                                showDebugInfo = true
+                            }
+                        }) {
+                            Text("Import Health Data")
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.green)
+                                .cornerRadius(12)
+                        }
+                        
+                        Button(action: {
+                            historyManager.clearAllEntries()
+                        }) {
+                            Text("Clear Data")
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.red)
+                                .cornerRadius(12)
+                        }
+                    }
+                    .padding(.horizontal)
+                    
+                    if isLoading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                            .scaleEffect(1.5)
+                            .padding()
+                    }
+                    
+                    if showDebugInfo {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Status: \(healthManager.fetchingStatus)")
+                                    .bold()
+                                
+                                Text("Weight entries: \(historyManager.getEntries(for: .weight).count)")
+                                ForEach(historyManager.getEntries(for: .weight).prefix(5), id: \.id) { entry in
+                                    Text("- \(entry.date.formatted()): \(String(format: "%.1f", entry.value)) kg")
+                                        .font(.caption)
+                                }
+                                
+                                Text("Height entries: \(historyManager.getEntries(for: .height).count)")
+                                ForEach(historyManager.getEntries(for: .height).prefix(5), id: \.id) { entry in
+                                    Text("- \(entry.date.formatted()): \(String(format: "%.1f", entry.value)) cm")
+                                        .font(.caption)
+                                }
+                                
+                                Text("Body Fat entries: \(historyManager.getEntries(for: .bodyFat).count)")
+                                ForEach(historyManager.getEntries(for: .bodyFat).prefix(5), id: \.id) { entry in
+                                    Text("- \(entry.date.formatted()): \(String(format: "%.1f", entry.value))%")
+                                        .font(.caption)
+                                }
+                            }
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                            .padding(.horizontal)
+                        }
+                        .frame(maxHeight: 300)
+                    }
+                }
                 
                 Spacer()
             }
@@ -153,6 +223,8 @@ struct HealthAccessView: View {
         }
     }
 }
+
+
 
 struct HealthDataTypeRow: View {
     let icon: String
