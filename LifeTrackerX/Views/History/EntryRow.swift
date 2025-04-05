@@ -9,8 +9,17 @@ struct EntryRow: View {
         HStack {
             // Left side - Icon and value
             HStack(spacing: 12) {
-                Image(systemName: "figure.walk")
-                    .foregroundColor(.blue)
+                // Different icon based on data source
+                if entry.source == .appleHealth {
+                    // Apple Health icon
+                    Image("applehealthdark")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 20, height: 20)
+                } else {
+                    Image(systemName: "figure.walk")
+                        .foregroundColor(.blue)
+                }
                 
                 let formattedValue = entry.value.truncatingRemainder(dividingBy: 1) == 0 ?
                     String(format: "%.0f", entry.value) :

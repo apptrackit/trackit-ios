@@ -1,11 +1,18 @@
 import Foundation
 import HealthKit
+import Combine
 
 class HealthManager: ObservableObject {
     private let healthStore = HKHealthStore()
     @Published var isHealthDataAvailable = false
     @Published var isAuthorized = false
     @Published var fetchingStatus: String = ""
+    // Add this trigger to force view updates
+    @Published var lastUpdateTimestamp: Date = Date()
+    
+    // Add a timer for periodic syncing
+    private var syncTimer: Timer?
+    private let syncInterval: TimeInterval = 300 // 5 minutes
     
     // Health data types we want to read
     private let typesToRead: Set = [
@@ -24,6 +31,32 @@ class HealthManager: ObservableObject {
     
     init() {
         checkHealthDataAvailability()
+        setupPeriodicSync()
+    }
+    
+    deinit {
+        syncTimer?.invalidate()
+    }
+    
+    private func setupPeriodicSync() {
+        // Cancel existing timer if any
+        syncTimer?.invalidate()
+        
+        // Create a new timer that fires every 5 minutes
+        syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) { [weak self] _ in
+            self?.performBackgroundSync()
+        }
+    }
+    
+    private func performBackgroundSync() {
+        guard isAuthorized else { return }
+        
+        // Get the shared StatsHistoryManager instance
+        let historyManager = StatsHistoryManager.shared
+        importAllHealthData(historyManager: historyManager) { _ in
+            // Background sync completed
+            print("Background sync completed at \(Date())")
+        }
     }
     
     private func checkHealthDataAvailability() {
@@ -53,6 +86,12 @@ class HealthManager: ObservableObject {
                     self.isAuthorized = true
                     print("HealthKit authorization successful")
                     self.fetchingStatus = "Authorization successful"
+                    
+                    // Perform initial sync after authorization
+                    let historyManager = StatsHistoryManager.shared
+                    self.importAllHealthData(historyManager: historyManager) { _ in
+                        print("Initial sync completed after authorization")
+                    }
                 } else {
                     print("HealthKit authorization denied")
                     self.fetchingStatus = "Authorization denied"
@@ -63,7 +102,10 @@ class HealthManager: ObservableObject {
     
     // Import all health data at once
     func importAllHealthData(historyManager: StatsHistoryManager, completion: @escaping (Bool) -> Void) {
-        self.fetchingStatus = "Starting data import..."
+        DispatchQueue.main.async {
+            self.fetchingStatus = "Starting data import..."
+        }
+        
         var successCount = 0
         let totalOperations = 3
         
@@ -86,9 +128,15 @@ class HealthManager: ObservableObject {
             DispatchQueue.main.async {
                 if successCount == totalOperations {
                     self.fetchingStatus = "All data imported successfully!"
+                    // Force UI refresh by updating timestamp
+                    self.lastUpdateTimestamp = Date()
+                    historyManager.triggerUpdate()
                     completion(true)
                 } else if successCount + (totalOperations - successCount) == totalOperations {
                     self.fetchingStatus = "Partial data import: \(successCount)/\(totalOperations) successful"
+                    // Force UI refresh by updating timestamp
+                    self.lastUpdateTimestamp = Date()
+                    historyManager.triggerUpdate()
                     completion(successCount > 0)
                 }
             }
@@ -161,6 +209,8 @@ class HealthManager: ObservableObject {
                     
                     print("Added \(addedCount) weight entries to history")
                     self.fetchingStatus = "Added \(addedCount) weight entries to history"
+                    // Force history manager to notify its subscribers
+                    historyManager.triggerUpdate()
                     completion(true)
                 }
             }
@@ -170,6 +220,7 @@ class HealthManager: ObservableObject {
     
     // Import all height data from HealthKit
     private func importHeightHistory(historyManager: StatsHistoryManager, completion: @escaping (Bool) -> Void) {
+        // Similar implementation with the same pattern as importWeightHistory
         guard let heightType = HKQuantityType.quantityType(forIdentifier: .height) else {
             DispatchQueue.main.async {
                 self.fetchingStatus = "Height type not available in HealthKit"
@@ -178,10 +229,7 @@ class HealthManager: ObservableObject {
             return
         }
         
-        // Create a predicate with no time restrictions to get ALL data
         let predicate = HKQuery.predicateForSamples(withStart: Date.distantPast, end: Date(), options: .strictEndDate)
-        
-        // Sort by date, oldest first
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         
         let query = HKSampleQuery(
@@ -225,15 +273,12 @@ class HealthManager: ObservableObject {
                         )
                         historyManager.addEntry(entry)
                         addedCount += 1
-                        
-                        // Debug first sample
-                        if addedCount == 1 {
-                            print("Height sample: \(heightInCm) cm on \(sample.startDate.formatted())")
-                        }
                     }
                     
                     print("Added \(addedCount) height entries to history")
                     self.fetchingStatus = "Added \(addedCount) height entries to history"
+                    // Force history manager to notify its subscribers
+                    historyManager.triggerUpdate()
                     completion(true)
                 }
             }
@@ -243,6 +288,7 @@ class HealthManager: ObservableObject {
     
     // Import all body fat data from HealthKit
     private func importBodyFatHistory(historyManager: StatsHistoryManager, completion: @escaping (Bool) -> Void) {
+        // Similar implementation with the same pattern as importWeightHistory
         guard let bodyFatType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage) else {
             DispatchQueue.main.async {
                 self.fetchingStatus = "Body fat type not available in HealthKit"
@@ -251,10 +297,7 @@ class HealthManager: ObservableObject {
             return
         }
         
-        // Create a predicate with no time restrictions to get ALL data
         let predicate = HKQuery.predicateForSamples(withStart: Date.distantPast, end: Date(), options: .strictEndDate)
-        
-        // Sort by date, oldest first
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         
         let query = HKSampleQuery(
@@ -298,15 +341,12 @@ class HealthManager: ObservableObject {
                         )
                         historyManager.addEntry(entry)
                         addedCount += 1
-                        
-                        // Debug first sample
-                        if addedCount == 1 {
-                            print("Body fat sample: \(bodyFatPercentage)% on \(sample.startDate.formatted())")
-                        }
                     }
                     
                     print("Added \(addedCount) body fat entries to history")
                     self.fetchingStatus = "Added \(addedCount) body fat entries to history"
+                    // Force history manager to notify its subscribers
+                    historyManager.triggerUpdate()
                     completion(true)
                 }
             }

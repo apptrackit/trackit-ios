@@ -2,11 +2,25 @@ import Foundation
 import SwiftUI
 
 class StatsHistoryManager: ObservableObject {
+    // Shared singleton instance
+    static let shared = StatsHistoryManager()
+    
     @Published var entries: [StatEntry] = []
+    // Add a refresh trigger to force view updates
+    @Published var refreshTrigger: UUID = UUID()
     private let saveKey = "StatsHistory"
     
-    init() {
+    // Make init private to enforce singleton pattern
+    private init() {
         loadEntries()
+    }
+    
+    // Add this method to force UI updates
+    func triggerUpdate() {
+        DispatchQueue.main.async {
+            self.refreshTrigger = UUID()
+            self.objectWillChange.send()
+        }
     }
     
     func addEntry(_ entry: StatEntry) {
@@ -32,6 +46,9 @@ class StatsHistoryManager: ObservableObject {
         // Sort entries by date (newest first)
         entries.sort { $0.date > $1.date }
         saveEntries()
+        
+        // Force UI refresh
+        triggerUpdate()
     }
     
     func removeEntry(_ entry: StatEntry) {
@@ -44,6 +61,7 @@ class StatsHistoryManager: ObservableObject {
         
         entries.removeAll { $0.id == entry.id }
         saveEntries()
+        triggerUpdate()
     }
     
     func updateEntry(_ entry: StatEntry) {
@@ -57,6 +75,7 @@ class StatsHistoryManager: ObservableObject {
         if let index = entries.firstIndex(where: { $0.id == entry.id }) {
             entries[index] = entry
             saveEntries()
+            triggerUpdate()
         }
     }
     
@@ -70,6 +89,10 @@ class StatsHistoryManager: ObservableObject {
     
     func getEntries(for type: StatType) -> [StatEntry] {
         return entries.filter { $0.type == type }.sorted(by: { $0.date > $1.date })
+    }
+    
+    func getEntries(for type: StatType, source: StatSource) -> [StatEntry] {
+        return entries.filter { $0.type == type && $0.source == source }.sorted(by: { $0.date > $1.date })
     }
     
     private func saveEntries() {
@@ -89,5 +112,13 @@ class StatsHistoryManager: ObservableObject {
     func clearAllEntries() {
         entries.removeAll()
         saveEntries()
+        triggerUpdate()
+    }
+    
+    // Function to clear only entries from a specific source
+    func clearEntries(from source: StatSource) {
+        entries.removeAll { $0.source == source }
+        saveEntries()
+        triggerUpdate()
     }
 }

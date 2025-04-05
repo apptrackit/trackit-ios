@@ -4,7 +4,16 @@ import HealthKit
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var healthManager = HealthManager()
+    @ObservedObject var historyManager: StatsHistoryManager
     @State private var showHealthAccessSheet = false
+    
+    // Computed property to check if Apple Health is actively connected
+    private var isAppleHealthConnected: Bool {
+        let weightEntries = historyManager.getEntries(for: .weight, source: .appleHealth)
+        let heightEntries = historyManager.getEntries(for: .height, source: .appleHealth)
+        let bodyFatEntries = historyManager.getEntries(for: .bodyFat, source: .appleHealth)
+        return !weightEntries.isEmpty || !heightEntries.isEmpty || !bodyFatEntries.isEmpty
+    }
     
     var body: some View {
         NavigationStack {
@@ -19,8 +28,13 @@ struct SettingsView: View {
                             Spacer()
                             if healthManager.isHealthDataAvailable {
                                 if healthManager.isAuthorized {
-                                    Text("Connected")
-                                        .foregroundColor(.green)
+                                    if isAppleHealthConnected {
+                                        Text("Connected")
+                                            .foregroundColor(.green)
+                                    } else {
+                                        Text("Disconnected")
+                                            .foregroundColor(.orange)
+                                    }
                                 } else {
                                     Text("Not Authorized")
                                         .foregroundColor(.orange)
@@ -82,7 +96,7 @@ struct SettingsView: View {
                 }
             }
             .sheet(isPresented: $showHealthAccessSheet) {
-                HealthAccessView(healthManager: healthManager)
+                HealthAccessView(healthManager: healthManager, historyManager: historyManager)
             }
         }
     }
@@ -91,83 +105,105 @@ struct SettingsView: View {
 struct HealthAccessView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var healthManager: HealthManager
-    @StateObject private var historyManager = StatsHistoryManager()
+    @ObservedObject var historyManager: StatsHistoryManager
     @State private var showDebugInfo = false
     @State private var isLoading = false
+    @State private var isRefreshing = false
+    @State private var showingActionSheet = false
+    
+    // Computed property to check if there are any Apple Health entries
+    private var hasAppleHealthData: Bool {
+        let weightEntries = historyManager.getEntries(for: .weight, source: .appleHealth)
+        let heightEntries = historyManager.getEntries(for: .height, source: .appleHealth)
+        let bodyFatEntries = historyManager.getEntries(for: .bodyFat, source: .appleHealth)
+        return !weightEntries.isEmpty || !heightEntries.isEmpty || !bodyFatEntries.isEmpty
+    }
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                Image(systemName: "heart.text.square.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 100, height: 100)
-                    .foregroundColor(.red)
-                    .padding(.top, 40)
-                
-                Text("Connect to Apple Health")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                
-                Text("This app needs access to your health data to provide accurate tracking and insights.")
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-                
-                VStack(alignment: .leading, spacing: 10) {
-                    HealthDataTypeRow(icon: "scalemass.fill", title: "Weight", description: "Track your weight changes over time")
-                    HealthDataTypeRow(icon: "ruler.fill", title: "Height", description: "Used for BMI calculations")
-                    HealthDataTypeRow(icon: "person.fill", title: "Body Fat Percentage", description: "Monitor body composition")
+            ScrollView {
+                RefreshControl(isRefreshing: $isRefreshing) {
+                    refreshData()
                 }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-                .padding(.horizontal)
                 
-                Button(action: {
-                    healthManager.requestHealthAuthorization()
-                }) {
-                    Text("Request Health Access")
+                VStack(spacing: 20) {
+                    Image("applehealthdark")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 100, height: 100)
+                        .padding(.top, 40)
+                    
+                    Text("Connect to Apple Health")
+                        .font(.title2)
                         .fontWeight(.bold)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(12)
-                }
-                .padding(.horizontal)
-                
-                if healthManager.isAuthorized {
-                    HStack {
-                        Button(action: {
-                            isLoading = true
-                            historyManager.clearAllEntries() // Clear existing data for clean test
-                            healthManager.importAllHealthData(historyManager: historyManager) { success in
-                                isLoading = false
-                                showDebugInfo = true
-                            }
-                        }) {
-                            Text("Import Health Data")
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.green)
-                                .cornerRadius(12)
-                        }
-                        
-                        Button(action: {
-                            historyManager.clearAllEntries()
-                        }) {
-                            Text("Clear Data")
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.red)
-                                .cornerRadius(12)
-                        }
+                    
+                    Text("This app needs access to your health data to provide accurate tracking and insights. Your data will be automatically synced with Apple Health.")
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    
+                    VStack(alignment: .leading, spacing: 10) {
+                        HealthDataTypeRow(icon: "scalemass.fill", title: "Weight", description: "Track your weight changes over time")
+                        HealthDataTypeRow(icon: "ruler.fill", title: "Height", description: "Used for BMI calculations")
+                        HealthDataTypeRow(icon: "person.fill", title: "Body Fat Percentage", description: "Monitor body composition")
                     }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
                     .padding(.horizontal)
+                    
+                    if healthManager.isAuthorized {
+                        if hasAppleHealthData {
+                            Button(action: {
+                                showingActionSheet = true
+                            }) {
+                                Text("Disconnect Apple Health")
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.red)
+                                    .cornerRadius(12)
+                            }
+                            .padding(.horizontal)
+                            .confirmationDialog(
+                                "Disconnect Apple Health",
+                                isPresented: $showingActionSheet,
+                                titleVisibility: .visible
+                            ) {
+                                Button("Disconnect", role: .destructive) {
+                                    clearAppleHealthData()
+                                }
+                            } message: {
+                                Text("This will disconnect Apple Health and remove all imported data. You can reconnect later to import data again.")
+                            }
+                        } else {
+                            Button(action: {
+                                importHealthData()
+                            }) {
+                                Text("Connect Apple Health")
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.blue)
+                                    .cornerRadius(12)
+                            }
+                            .padding(.horizontal)
+                        }
+                    } else {
+                        Button(action: {
+                            requestAuthorization()
+                        }) {
+                            Text("Request Health Access")
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.blue)
+                                .cornerRadius(12)
+                        }
+                        .padding(.horizontal)
+                    }
                     
                     if isLoading {
                         ProgressView()
@@ -177,41 +213,41 @@ struct HealthAccessView: View {
                     }
                     
                     if showDebugInfo {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Status: \(healthManager.fetchingStatus)")
-                                    .bold()
-                                
-                                Text("Weight entries: \(historyManager.getEntries(for: .weight).count)")
-                                ForEach(historyManager.getEntries(for: .weight).prefix(5), id: \.id) { entry in
-                                    Text("- \(entry.date.formatted()): \(String(format: "%.1f", entry.value)) kg")
-                                        .font(.caption)
-                                }
-                                
-                                Text("Height entries: \(historyManager.getEntries(for: .height).count)")
-                                ForEach(historyManager.getEntries(for: .height).prefix(5), id: \.id) { entry in
-                                    Text("- \(entry.date.formatted()): \(String(format: "%.1f", entry.value)) cm")
-                                        .font(.caption)
-                                }
-                                
-                                Text("Body Fat entries: \(historyManager.getEntries(for: .bodyFat).count)")
-                                ForEach(historyManager.getEntries(for: .bodyFat).prefix(5), id: \.id) { entry in
-                                    Text("- \(entry.date.formatted()): \(String(format: "%.1f", entry.value))%")
-                                        .font(.caption)
-                                }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Status: \(healthManager.fetchingStatus)")
+                                .bold()
+                            
+                            Text("Last sync: \(healthManager.lastUpdateTimestamp.formatted())")
+                                .font(.caption)
+                            
+                            Text("Weight entries: \(historyManager.getEntries(for: .weight, source: .appleHealth).count)")
+                            ForEach(historyManager.getEntries(for: .weight, source: .appleHealth).prefix(5), id: \.id) { entry in
+                                Text("- \(entry.date.formatted()): \(String(format: "%.1f", entry.value)) kg")
+                                    .font(.caption)
                             }
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
-                            .padding(.horizontal)
+                            
+                            Text("Height entries: \(historyManager.getEntries(for: .height, source: .appleHealth).count)")
+                            ForEach(historyManager.getEntries(for: .height, source: .appleHealth).prefix(5), id: \.id) { entry in
+                                Text("- \(entry.date.formatted()): \(String(format: "%.1f", entry.value)) cm")
+                                    .font(.caption)
+                            }
+                            
+                            Text("Body Fat entries: \(historyManager.getEntries(for: .bodyFat, source: .appleHealth).count)")
+                            ForEach(historyManager.getEntries(for: .bodyFat, source: .appleHealth).prefix(5), id: \.id) { entry in
+                                Text("- \(entry.date.formatted()): \(String(format: "%.1f", entry.value))%")
+                                    .font(.caption)
+                            }
                         }
-                        .frame(maxHeight: 300)
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                        .padding(.horizontal)
                     }
+                    
+                    Spacer()
                 }
-                
-                Spacer()
             }
-            .navigationTitle("Health Access")
+            .navigationTitle("Apple Health")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -222,9 +258,82 @@ struct HealthAccessView: View {
             }
         }
     }
+    
+    private func requestAuthorization() {
+        healthManager.requestHealthAuthorization()
+        // After authorization, automatically import data
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            importHealthData()
+        }
+    }
+    
+    private func importHealthData() {
+        isLoading = true
+        healthManager.importAllHealthData(historyManager: historyManager) { success in
+            isLoading = false
+            showDebugInfo = true
+        }
+    }
+    
+    private func refreshData() {
+        // Only refresh if we have Apple Health data connected
+        if hasAppleHealthData {
+            isRefreshing = true
+            healthManager.importAllHealthData(historyManager: historyManager) { success in
+                isRefreshing = false
+                showDebugInfo = true
+            }
+        } else {
+            isRefreshing = false
+        }
+    }
+    
+    private func clearAppleHealthData() {
+        isLoading = true
+        
+        // Only remove entries that were imported from Apple Health
+        historyManager.clearEntries(from: .appleHealth)
+        
+        // Show the debug info and stop loading
+        showDebugInfo = true
+        isLoading = false
+    }
 }
 
-
+// Custom RefreshControl for pull-to-refresh functionality
+struct RefreshControl: View {
+    @Binding var isRefreshing: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        GeometryReader { geometry in
+            let offset = geometry.frame(in: .global).minY
+            let threshold: CGFloat = -50
+            
+            VStack {
+                if offset < threshold {
+                    Spacer()
+                        .onAppear {
+                            if !isRefreshing {
+                                isRefreshing = true
+                                action()
+                            }
+                        }
+                }
+                
+                HStack {
+                    Spacer()
+                    if isRefreshing {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                    }
+                    Spacer()
+                }
+            }
+        }
+        .frame(height: 50)
+    }
+}
 
 struct HealthDataTypeRow: View {
     let icon: String

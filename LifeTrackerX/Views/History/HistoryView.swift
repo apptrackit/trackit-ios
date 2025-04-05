@@ -45,6 +45,29 @@ struct HistoryView: View {
                         }
                         .padding(.horizontal)
                         
+                        // Legend for data sources
+                        HStack(spacing: 20) {
+                            HStack(spacing: 5) {
+                                Image("applehealthdark")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
+                                Text("Apple Health")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                            
+                            HStack(spacing: 5) {
+                                Image(systemName: "figure.walk")
+                                    .foregroundColor(.blue)
+                                Text("Manual Entry")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.bottom, 5)
+                        
                         if entries.isEmpty {
                             ContentUnavailableView {
                                 Label("No \(statType.title) History", systemImage: "chart.xyaxis.line")
