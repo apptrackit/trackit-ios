@@ -104,18 +104,30 @@ class StatsHistoryManager: ObservableObject {
     }
     
     private func recalculateBMIEntries() {
+        print("🔄 Recalculating BMI entries...")
+        
         // Get all weight and height entries sorted by date
         let weightEntries = entries.filter { $0.type == .weight }.sorted { $0.date < $1.date }
         let heightEntries = entries.filter { $0.type == .height }.sorted { $0.date < $1.date }
         
+        print("🔄 Found \(weightEntries.count) weight entries")
+        print("🔄 Found \(heightEntries.count) height entries")
+        
         // Remove all existing BMI entries
+        let oldBMICount = entries.filter { $0.type == .bmi }.count
         entries.removeAll { $0.type == .bmi }
+        print("🔄 Removed \(oldBMICount) existing BMI entries")
+        
+        var newBMICount = 0
         
         // Calculate BMI for each weight entry using the most recent height at that time
         for weightEntry in weightEntries {
             if let heightEntry = heightEntries.last(where: { $0.date <= weightEntry.date }) {
                 let heightInMeters = heightEntry.value / 100
                 let bmi = weightEntry.value / (heightInMeters * heightInMeters)
+                
+                print("🔄 Calculating BMI for weight=\(weightEntry.value)kg, height=\(heightEntry.value)cm")
+                print("🔄 BMI = \(bmi) on \(weightEntry.date)")
                 
                 // Create BMI entry with the same date as the weight entry
                 let bmiEntry = StatEntry(
@@ -125,12 +137,18 @@ class StatsHistoryManager: ObservableObject {
                     source: weightEntry.source // Use the same source as the weight entry
                 )
                 entries.append(bmiEntry)
+                newBMICount += 1
             }
         }
+        
+        print("🔄 Created \(newBMICount) new BMI entries")
         
         // Sort entries by date (newest first)
         entries.sort { $0.date > $1.date }
         saveEntries()
+        
+        // Force UI refresh
+        triggerUpdate()
     }
     
     func removeEntry(_ entry: StatEntry) {
@@ -232,11 +250,20 @@ class StatsHistoryManager: ObservableObject {
     }
     
     private func loadEntries() {
+        print("📱 Loading entries from storage...")
         if let data = UserDefaults.standard.data(forKey: saveKey),
            let decoded = try? JSONDecoder().decode([StatEntry].self, from: data) {
             entries = decoded
+            print("📱 Loaded \(entries.count) total entries")
+            print("📱 Weight entries: \(entries.filter { $0.type == .weight }.count)")
+            print("📱 Height entries: \(entries.filter { $0.type == .height }.count)")
+            print("📱 BMI entries: \(entries.filter { $0.type == .bmi }.count)")
+            print("📱 Body Fat entries: \(entries.filter { $0.type == .bodyFat }.count)")
+            
             // Recalculate BMI entries when loading data
             recalculateBMIEntries()
+        } else {
+            print("📱 No entries found in storage or failed to decode")
         }
     }
     
