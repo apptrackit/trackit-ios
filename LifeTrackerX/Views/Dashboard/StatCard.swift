@@ -53,7 +53,7 @@ struct StatCard: View {
         .cornerRadius(25)
         .padding(5)
         .onTapGesture {
-            if isEditable && statType != nil {
+            if statType != nil {
                 showingHistoryView = true
             }
         }

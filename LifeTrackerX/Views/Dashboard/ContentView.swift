@@ -40,7 +40,7 @@ struct ContentView: View {
                     
                     VStack(spacing: 20) {
                         GridView(weight: weight, height: height, bmi: bmi, bodyFat: bodyFat, historyManager: historyManager)
-                            .padding(.top)
+                            .padding(.top,-40)
                         
                         Spacer()
                     }

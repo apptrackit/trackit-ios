@@ -45,10 +45,46 @@ class StatsHistoryManager: ObservableObject {
         
         // Sort entries by date (newest first)
         entries.sort { $0.date > $1.date }
+        
+        // If this is a weight or height entry, recalculate BMI entries
+        if entry.type == .weight || entry.type == .height {
+            recalculateBMIEntries()
+        }
+        
         saveEntries()
         
         // Force UI refresh
         triggerUpdate()
+    }
+    
+    private func recalculateBMIEntries() {
+        // Get all weight and height entries sorted by date
+        let weightEntries = entries.filter { $0.type == .weight }.sorted { $0.date < $1.date }
+        let heightEntries = entries.filter { $0.type == .height }.sorted { $0.date < $1.date }
+        
+        // Remove all existing BMI entries
+        entries.removeAll { $0.type == .bmi }
+        
+        // Calculate BMI for each weight entry using the most recent height at that time
+        for weightEntry in weightEntries {
+            if let heightEntry = heightEntries.last(where: { $0.date <= weightEntry.date }) {
+                let heightInMeters = heightEntry.value / 100
+                let bmi = weightEntry.value / (heightInMeters * heightInMeters)
+                
+                // Create BMI entry with the same date as the weight entry
+                let bmiEntry = StatEntry(
+                    date: weightEntry.date,
+                    value: bmi,
+                    type: .bmi,
+                    source: weightEntry.source // Use the same source as the weight entry
+                )
+                entries.append(bmiEntry)
+            }
+        }
+        
+        // Sort entries by date (newest first)
+        entries.sort { $0.date > $1.date }
+        saveEntries()
     }
     
     func removeEntry(_ entry: StatEntry) {
@@ -60,6 +96,12 @@ class StatsHistoryManager: ObservableObject {
         }
         
         entries.removeAll { $0.id == entry.id }
+        
+        // If this is a weight or height entry, recalculate BMI entries
+        if entry.type == .weight || entry.type == .height {
+            recalculateBMIEntries()
+        }
+        
         saveEntries()
         triggerUpdate()
     }
@@ -74,6 +116,12 @@ class StatsHistoryManager: ObservableObject {
         
         if let index = entries.firstIndex(where: { $0.id == entry.id }) {
             entries[index] = entry
+            
+            // If this is a weight or height entry, recalculate BMI entries
+            if entry.type == .weight || entry.type == .height {
+                recalculateBMIEntries()
+            }
+            
             saveEntries()
             triggerUpdate()
         }
@@ -105,6 +153,8 @@ class StatsHistoryManager: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: saveKey),
            let decoded = try? JSONDecoder().decode([StatEntry].self, from: data) {
             entries = decoded
+            // Recalculate BMI entries when loading data
+            recalculateBMIEntries()
         }
     }
     
@@ -118,6 +168,8 @@ class StatsHistoryManager: ObservableObject {
     // Function to clear only entries from a specific source
     func clearEntries(from source: StatSource) {
         entries.removeAll { $0.source == source }
+        // Recalculate BMI entries after clearing data
+        recalculateBMIEntries()
         saveEntries()
         triggerUpdate()
     }

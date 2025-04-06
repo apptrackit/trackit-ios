@@ -23,7 +23,9 @@ struct GridView: View {
             HStack {
                 StatCard(title: "BMI",
                          value: bmi != nil ? String(format: "%.1f", bmi!) : "N/A",
-                         isEditable: false)
+                         statType: .bmi,
+                         isEditable: false,
+                         historyManager: historyManager)
                 
                 StatCard(title: "Body Fat",
                          value: bodyFat != nil ? String(format: "%.1f %%", bodyFat!) : "No data",

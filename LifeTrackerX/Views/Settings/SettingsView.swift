@@ -23,8 +23,12 @@ struct SettingsView: View {
                         showHealthAccessSheet = true
                     }) {
                         HStack {
-                            Label("Apple Health", systemImage: "heart.fill")
-                                .foregroundColor(.red)
+                            Image("applehealthdark")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                            Text("Apple Health")
+                                .foregroundColor(.primary)
                             Spacer()
                             if healthManager.isHealthDataAvailable {
                                 if healthManager.isAuthorized {
