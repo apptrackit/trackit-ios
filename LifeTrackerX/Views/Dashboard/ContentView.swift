@@ -46,7 +46,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationTitle("LifeTrackerX")
+            .navigationTitle("Dashboard")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {

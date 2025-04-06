@@ -332,7 +332,6 @@ class HealthManager: ObservableObject {
     
     // Import all body fat data from HealthKit
     private func importBodyFatHistory(historyManager: StatsHistoryManager, completion: @escaping (Bool) -> Void) {
-        // Similar implementation with the same pattern as importWeightHistory
         guard let bodyFatType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage) else {
             DispatchQueue.main.async {
                 self.fetchingStatus = "Body fat type not available in HealthKit"
@@ -344,81 +343,81 @@ class HealthManager: ObservableObject {
         let predicate = HKQuery.predicateForSamples(withStart: Date.distantPast, end: Date(), options: .strictEndDate)
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         
-        let query = HKSampleQuery(
-            sampleType: bodyFatType,
-            predicate: predicate,
-            limit: HKObjectQueryNoLimit,
-            sortDescriptors: [sortDescriptor],
-            resultsHandler: { [weak self] query, samples, error in
-                guard let self = self else { return }
-                
-                if let error = error {
-                    DispatchQueue.main.async {
-                        print("Error fetching body fat data: \(error.localizedDescription)")
-                        self.fetchingStatus = "Error fetching body fat data: \(error.localizedDescription)"
-                        completion(false)
-                    }
-                    return
-                }
-                
-                guard let samples = samples as? [HKQuantitySample], !samples.isEmpty else {
-                    DispatchQueue.main.async {
-                        print("No body fat samples found")
-                        self.fetchingStatus = "No body fat samples found"
-                        completion(true) // Still return true even if no data found
-                    }
-                    return
-                }
-                
+        let query = HKSampleQuery(sampleType: bodyFatType,
+                                predicate: predicate,
+                                limit: HKObjectQueryNoLimit,
+                                sortDescriptors: [sortDescriptor]) { [weak self] (query, samples, error) in
+            guard let self = self else { return }
+            
+            if let error = error {
                 DispatchQueue.main.async {
-                    print("Fetched \(samples.count) body fat samples")
-                    self.fetchingStatus = "Fetched \(samples.count) body fat samples"
-                    
-                    var addedCount = 0
-                    for sample in samples {
-                        let bodyFatPercentage = sample.quantity.doubleValue(for: HKUnit.percent())
-                        let entry = StatEntry(
-                            date: sample.startDate,
-                            value: bodyFatPercentage,
-                            type: .bodyFat,
-                            source: .appleHealth
-                        )
-                        historyManager.addEntry(entry)
-                        addedCount += 1
-                    }
-                    
-                    print("Added \(addedCount) body fat entries to history")
-                    self.fetchingStatus = "Added \(addedCount) body fat entries to history"
-                    // Force history manager to notify its subscribers
-                    historyManager.triggerUpdate()
-                    completion(true)
+                    print("❌ Error fetching body fat data: \(error.localizedDescription)")
+                    self.fetchingStatus = "Error fetching body fat data: \(error.localizedDescription)"
+                    completion(false)
                 }
+                return
             }
-        )
+            
+            guard let samples = samples as? [HKQuantitySample], !samples.isEmpty else {
+                DispatchQueue.main.async {
+                    print("No body fat samples found")
+                    self.fetchingStatus = "No body fat samples found"
+                    completion(true) // Still return true even if no data found
+                }
+                return
+            }
+            
+            DispatchQueue.main.async {
+                print("Fetched \(samples.count) body fat samples")
+                self.fetchingStatus = "Fetched \(samples.count) body fat samples"
+                
+                var addedCount = 0
+                for sample in samples {
+                    let bodyFatDecimal = sample.quantity.doubleValue(for: HKUnit.percent())
+                    // Convert from decimal (0.15) to percentage (15%)
+                    let bodyFatPercentage = bodyFatDecimal * 100.0
+                    let entry = StatEntry(
+                        date: sample.startDate,
+                        value: bodyFatPercentage,
+                        type: .bodyFat,
+                        source: .appleHealth
+                    )
+                    historyManager.addEntry(entry)
+                    addedCount += 1
+                }
+                
+                print("Added \(addedCount) body fat entries to history")
+                self.fetchingStatus = "Added \(addedCount) body fat entries to history"
+                // Force history manager to notify its subscribers
+                historyManager.triggerUpdate()
+                completion(true)
+            }
+        }
         healthStore.execute(query)
     }
     
     // Function to save a manual entry to HealthKit
     func saveToHealthKit(_ entry: StatEntry, completion: @escaping (Bool, Error?) -> Void) {
-        // Check authorization status without requesting access
         var quantityType: HKQuantityType?
         var unit: HKUnit
+        var value = entry.value // Default to the original value
         
         switch entry.type {
         case .weight:
             quantityType = HKQuantityType.quantityType(forIdentifier: .bodyMass)
             unit = HKUnit.gramUnit(with: .kilo)
-            print("📝 Preparing to save weight: \(entry.value) \(unit)")
+            print("📝 Preparing to save weight: \(value) \(unit)")
         case .height:
             quantityType = HKQuantityType.quantityType(forIdentifier: .height)
             unit = HKUnit.meterUnit(with: .centi)
-            print("📝 Preparing to save height: \(entry.value) \(unit)")
+            print("📝 Preparing to save height: \(value) \(unit)")
         case .bodyFat:
             quantityType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage)
             unit = HKUnit.percent()
-            print("📝 Preparing to save body fat: \(entry.value) \(unit)")
+            // Convert from percentage (15%) to decimal (0.15)
+            value = entry.value / 100.0
+            print("📝 Preparing to save body fat: \(value) \(unit) (converted from \(entry.value)%)")
         case .bmi:
-            // BMI is calculated, not stored
             print("❌ BMI cannot be saved to HealthKit")
             completion(false, nil)
             return
@@ -440,18 +439,18 @@ class HealthManager: ObservableObject {
             return
         }
         
-        let quantity = HKQuantity(unit: unit, doubleValue: entry.value)
+        let quantity = HKQuantity(unit: unit, doubleValue: value)
         let sample = HKQuantitySample(type: quantityType,
                                     quantity: quantity,
                                     start: entry.date,
                                     end: entry.date,
                                     metadata: ["source": "LifeTrackerX"])
         
-        print("📝 Attempting to save \(entry.type) to HealthKit: \(entry.value) at \(entry.date)")
+        print("📝 Attempting to save \(entry.type) to HealthKit: \(value) at \(entry.date)")
         healthStore.save(sample) { success, error in
             DispatchQueue.main.async {
                 if success {
-                    print("✅ Successfully saved \(entry.type) to HealthKit: \(entry.value)")
+                    print("✅ Successfully saved \(entry.type) to HealthKit: \(value)")
                 } else if let error = error {
                     print("❌ Error saving to HealthKit: \(error.localizedDescription)")
                 }
