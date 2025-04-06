@@ -69,16 +69,24 @@ struct HistoryView: View {
                         .padding(.bottom, 5)
                         
                         if entries.isEmpty {
-                            ContentUnavailableView {
-                                Label("No \(statType.title) History", systemImage: "chart.xyaxis.line")
-                            } description: {
-                                if statType == .bmi {
-                                    Text("BMI is automatically calculated from your weight and height")
-                                } else {
-                                    Text("Tap + to add your first \(statType.title.lowercased()) entry")
-                                }
+                            VStack(spacing: 12) {
+                                Image(systemName: "chart.xyaxis.line")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.gray)
+                                
+                                Text("No \(statType.title) History")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                
+                                Text(statType == .bmi ? 
+                                    "BMI is automatically calculated from your weight and height" :
+                                    "Tap + to add your first \(statType.title.lowercased()) entry")
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                                    .multilineTextAlignment(.center)
                             }
-                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
                         } else {
                             LazyVStack {
                                 ForEach(entries) { entry in
