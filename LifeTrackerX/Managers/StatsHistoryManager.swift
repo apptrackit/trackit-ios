@@ -10,6 +10,9 @@ class StatsHistoryManager: ObservableObject {
     @Published var refreshTrigger: UUID = UUID()
     private let saveKey = "StatsHistory"
     
+    // Reference to HealthManager
+    private let healthManager = HealthManager()
+    
     // Make init private to enforce singleton pattern
     private init() {
         loadEntries()
@@ -23,6 +26,27 @@ class StatsHistoryManager: ObservableObject {
         }
     }
     
+    // Function to sync all manual entries to Apple Health
+    func syncManualEntriesToHealthKit() {
+        guard healthManager.isAuthorized else { return }
+        
+        print("📤 Starting sync of all manual entries to Apple Health")
+        
+        // Get all manual entries that aren't BMI (since BMI is calculated)
+        let manualEntries = entries.filter { $0.source == .manual && $0.type != .bmi }
+        print("📤 Found \(manualEntries.count) manual entries to sync")
+        
+        for entry in manualEntries {
+            healthManager.saveToHealthKit(entry) { success, error in
+                if success {
+                    print("✅ Successfully synced historical \(entry.type) to Apple Health")
+                } else if let error = error {
+                    print("❌ Error syncing historical data to Apple Health: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
     func addEntry(_ entry: StatEntry) {
         // Need to ensure we're on the main thread when modifying @Published properties
         if !Thread.isMainThread {
@@ -32,6 +56,8 @@ class StatsHistoryManager: ObservableObject {
             return
         }
         
+        print("⭐️ Adding entry: type=\(entry.type), source=\(entry.source), value=\(entry.value)")
+        
         // Only replace if the entry has the same date, type and source
         if let index = entries.firstIndex(where: {
             Calendar.current.isDate($0.date, inSameDayAs: entry.date) &&
@@ -39,8 +65,10 @@ class StatsHistoryManager: ObservableObject {
             $0.source == entry.source
         }) {
             entries[index] = entry
+            print("⭐️ Replaced existing entry at index \(index)")
         } else {
             entries.append(entry)
+            print("⭐️ Added new entry")
         }
         
         // Sort entries by date (newest first)
@@ -52,6 +80,24 @@ class StatsHistoryManager: ObservableObject {
         }
         
         saveEntries()
+        
+        // If this is a manual entry and not from Apple Health, sync to HealthKit
+        if entry.source == .manual && entry.type != .bmi {
+            print("⭐️ Attempting to sync manual entry to HealthKit")
+            print("⭐️ HealthKit authorized: \(healthManager.isAuthorized)")
+            
+            healthManager.saveToHealthKit(entry) { success, error in
+                if success {
+                    print("⭐️ Successfully synced \(entry.type) to Apple Health")
+                } else if let error = error {
+                    print("❌ Error syncing to Apple Health: \(error.localizedDescription)")
+                } else {
+                    print("❌ Failed to sync to Apple Health (no error details)")
+                }
+            }
+        } else {
+            print("⭐️ Entry not synced to HealthKit: source=\(entry.source), type=\(entry.type)")
+        }
         
         // Force UI refresh
         triggerUpdate()
@@ -102,6 +148,17 @@ class StatsHistoryManager: ObservableObject {
             recalculateBMIEntries()
         }
         
+        // If this was a manual entry, also delete from HealthKit
+        if entry.source == .manual {
+            healthManager.deleteFromHealthKit(entry) { success, error in
+                if success {
+                    print("Successfully deleted \(entry.type) from Apple Health")
+                } else if let error = error {
+                    print("Error deleting from Apple Health: \(error.localizedDescription)")
+                }
+            }
+        }
+        
         saveEntries()
         triggerUpdate()
     }
@@ -114,8 +171,33 @@ class StatsHistoryManager: ObservableObject {
             return
         }
         
+        print("📝 Updating entry: type=\(entry.type), source=\(entry.source), value=\(entry.value)")
+        
         if let index = entries.firstIndex(where: { $0.id == entry.id }) {
+            let oldEntry = entries[index]
             entries[index] = entry
+            
+            // If this is a manual entry and we're authorized, update in HealthKit
+            if oldEntry.source == .manual && entry.type != .bmi && healthManager.isAuthorized {
+                print("📤 Syncing updated entry to Apple Health")
+                
+                // First delete the old entry from HealthKit
+                healthManager.deleteFromHealthKit(oldEntry) { success, error in
+                    if success {
+                        print("✅ Successfully deleted old entry from Apple Health")
+                        // Then save the new entry to HealthKit
+                        self.healthManager.saveToHealthKit(entry) { success, error in
+                            if success {
+                                print("✅ Successfully saved updated entry to Apple Health")
+                            } else if let error = error {
+                                print("❌ Error saving updated entry to Apple Health: \(error.localizedDescription)")
+                            }
+                        }
+                    } else if let error = error {
+                        print("❌ Error deleting old entry from Apple Health: \(error.localizedDescription)")
+                    }
+                }
+            }
             
             // If this is a weight or height entry, recalculate BMI entries
             if entry.type == .weight || entry.type == .height {

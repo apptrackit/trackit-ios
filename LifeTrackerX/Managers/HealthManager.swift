@@ -62,38 +62,82 @@ class HealthManager: ObservableObject {
     private func checkHealthDataAvailability() {
         isHealthDataAvailable = HKHealthStore.isHealthDataAvailable()
         if isHealthDataAvailable {
-            checkAuthorizationStatus()
+            // Only check the status, don't request authorization
+            checkAuthorizationStatus(shouldRequestAccess: false)
         }
     }
     
-    private func checkAuthorizationStatus() {
-        guard let weightType = HKObjectType.quantityType(forIdentifier: .bodyMass) else { return }
-        let status = healthStore.authorizationStatus(for: weightType)
+    func checkAuthorizationStatus(shouldRequestAccess: Bool = false) {
+        // Check authorization status for all types we want to write
+        var allAuthorized = true
+        for type in typesToWrite {
+            let status = healthStore.authorizationStatus(for: type)
+            print("🔑 HealthKit authorization status for \(type): \(status.rawValue)")
+            if status != .sharingAuthorized {
+                allAuthorized = false
+                break
+            }
+        }
+        
         DispatchQueue.main.async {
-            self.isAuthorized = status == .sharingAuthorized
+            self.isAuthorized = allAuthorized
+            print("🔑 isAuthorized set to: \(self.isAuthorized)")
+            
+            // Only request authorization if explicitly asked to do so
+            if !self.isAuthorized && shouldRequestAccess {
+                print("🔑 Not authorized, requesting authorization...")
+                self.requestHealthAuthorization()
+            }
         }
     }
     
     func requestHealthAuthorization() {
-        guard isHealthDataAvailable else { return }
-        healthStore.requestAuthorization(toShare: typesToWrite, read: typesToRead) { success, error in
+        guard isHealthDataAvailable else {
+            print("❌ HealthKit not available")
+            return
+        }
+        
+        print("🔑 Requesting HealthKit authorization...")
+        print("🔑 Types to write: \(typesToWrite)")
+        print("🔑 Types to read: \(typesToRead)")
+        
+        // Request authorization for both reading and writing
+        healthStore.requestAuthorization(toShare: typesToWrite, read: typesToRead) { [weak self] success, error in
+            guard let self = self else { return }
+            
             DispatchQueue.main.async {
                 if let error = error {
-                    print("HealthKit authorization error: \(error.localizedDescription)")
+                    print("❌ HealthKit authorization error: \(error.localizedDescription)")
                     self.fetchingStatus = "Authorization error: \(error.localizedDescription)"
                 }
-                if success {
-                    self.isAuthorized = true
-                    print("HealthKit authorization successful")
+                
+                // Re-check authorization status for all types
+                var allAuthorized = true
+                for type in self.typesToWrite {
+                    let status = self.healthStore.authorizationStatus(for: type)
+                    print("🔑 Post-request status for \(type): \(status.rawValue)")
+                    if status != .sharingAuthorized {
+                        allAuthorized = false
+                        break
+                    }
+                }
+                
+                self.isAuthorized = allAuthorized
+                print("🔑 Post-request isAuthorized set to: \(self.isAuthorized)")
+                
+                if success && allAuthorized {
+                    print("✅ HealthKit authorization successful")
                     self.fetchingStatus = "Authorization successful"
                     
                     // Perform initial sync after authorization
                     let historyManager = StatsHistoryManager.shared
                     self.importAllHealthData(historyManager: historyManager) { _ in
-                        print("Initial sync completed after authorization")
+                        print("✅ Initial sync completed after authorization")
+                        // After importing data, sync any existing manual entries
+                        historyManager.syncManualEntriesToHealthKit()
                     }
                 } else {
-                    print("HealthKit authorization denied")
+                    print("❌ HealthKit authorization denied")
                     self.fetchingStatus = "Authorization denied"
                 }
             }
@@ -351,6 +395,161 @@ class HealthManager: ObservableObject {
                 }
             }
         )
+        healthStore.execute(query)
+    }
+    
+    // Function to save a manual entry to HealthKit
+    func saveToHealthKit(_ entry: StatEntry, completion: @escaping (Bool, Error?) -> Void) {
+        // Check authorization status without requesting access
+        var quantityType: HKQuantityType?
+        var unit: HKUnit
+        
+        switch entry.type {
+        case .weight:
+            quantityType = HKQuantityType.quantityType(forIdentifier: .bodyMass)
+            unit = HKUnit.gramUnit(with: .kilo)
+            print("📝 Preparing to save weight: \(entry.value) \(unit)")
+        case .height:
+            quantityType = HKQuantityType.quantityType(forIdentifier: .height)
+            unit = HKUnit.meterUnit(with: .centi)
+            print("📝 Preparing to save height: \(entry.value) \(unit)")
+        case .bodyFat:
+            quantityType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage)
+            unit = HKUnit.percent()
+            print("📝 Preparing to save body fat: \(entry.value) \(unit)")
+        case .bmi:
+            // BMI is calculated, not stored
+            print("❌ BMI cannot be saved to HealthKit")
+            completion(false, nil)
+            return
+        }
+        
+        guard let quantityType = quantityType else {
+            print("❌ Invalid quantity type")
+            completion(false, nil)
+            return
+        }
+        
+        // Check specific authorization for this type
+        let status = healthStore.authorizationStatus(for: quantityType)
+        print("🔑 Authorization status for \(entry.type): \(status.rawValue)")
+        
+        guard status == .sharingAuthorized else {
+            print("❌ Not authorized to save \(entry.type) to HealthKit")
+            completion(false, nil)
+            return
+        }
+        
+        let quantity = HKQuantity(unit: unit, doubleValue: entry.value)
+        let sample = HKQuantitySample(type: quantityType,
+                                    quantity: quantity,
+                                    start: entry.date,
+                                    end: entry.date,
+                                    metadata: ["source": "LifeTrackerX"])
+        
+        print("📝 Attempting to save \(entry.type) to HealthKit: \(entry.value) at \(entry.date)")
+        healthStore.save(sample) { success, error in
+            DispatchQueue.main.async {
+                if success {
+                    print("✅ Successfully saved \(entry.type) to HealthKit: \(entry.value)")
+                } else if let error = error {
+                    print("❌ Error saving to HealthKit: \(error.localizedDescription)")
+                }
+                completion(success, error)
+            }
+        }
+    }
+    
+    // Function to delete entries from HealthKit
+    func deleteFromHealthKit(_ entry: StatEntry, completion: @escaping (Bool, Error?) -> Void) {
+        var quantityType: HKQuantityType?
+        
+        switch entry.type {
+        case .weight:
+            quantityType = HKQuantityType.quantityType(forIdentifier: .bodyMass)
+            print("🗑️ Preparing to delete weight entry")
+        case .height:
+            quantityType = HKQuantityType.quantityType(forIdentifier: .height)
+            print("🗑️ Preparing to delete height entry")
+        case .bodyFat:
+            quantityType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage)
+            print("🗑️ Preparing to delete body fat entry")
+        case .bmi:
+            // BMI is calculated, not stored
+            print("❌ Cannot delete BMI from HealthKit - it's calculated")
+            completion(false, nil)
+            return
+        }
+        
+        guard let quantityType = quantityType else {
+            print("❌ Invalid quantity type for deletion")
+            completion(false, nil)
+            return
+        }
+        
+        // Check specific authorization for this type
+        let status = healthStore.authorizationStatus(for: quantityType)
+        print("🔑 Authorization status for deleting \(entry.type): \(status.rawValue)")
+        
+        guard status == .sharingAuthorized else {
+            print("❌ Not authorized to delete \(entry.type) from HealthKit")
+            completion(false, nil)
+            return
+        }
+        
+        // Create a predicate to find samples with the exact date
+        let predicate = HKQuery.predicateForSamples(withStart: entry.date,
+                                                   end: entry.date.addingTimeInterval(1),
+                                                   options: .strictStartDate)
+        
+        print("🔍 Searching for \(entry.type) entries to delete at \(entry.date)")
+        
+        // Query for samples to delete
+        let query = HKSampleQuery(sampleType: quantityType,
+                                predicate: predicate,
+                                limit: HKObjectQueryNoLimit,
+                                sortDescriptors: nil) { [weak self] (query, samples, error) in
+            guard let self = self else { return }
+            
+            if let error = error {
+                print("❌ Error searching for samples to delete: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    completion(false, error)
+                }
+                return
+            }
+            
+            guard let samplesToDelete = samples as? [HKQuantitySample] else {
+                print("❌ No matching samples found to delete")
+                DispatchQueue.main.async {
+                    completion(false, nil)
+                }
+                return
+            }
+            
+            if samplesToDelete.isEmpty {
+                print("⚠️ No samples found to delete for \(entry.type) at \(entry.date)")
+                DispatchQueue.main.async {
+                    completion(true, nil) // Return success since there's nothing to delete
+                }
+                return
+            }
+            
+            print("🗑️ Found \(samplesToDelete.count) samples to delete")
+            
+            // Delete the found samples
+            self.healthStore.delete(samplesToDelete) { (success, error) in
+                DispatchQueue.main.async {
+                    if success {
+                        print("✅ Successfully deleted \(samplesToDelete.count) \(entry.type) entries from HealthKit")
+                    } else if let error = error {
+                        print("❌ Error deleting from HealthKit: \(error.localizedDescription)")
+                    }
+                    completion(success, error)
+                }
+            }
+        }
+        
         healthStore.execute(query)
     }
 }

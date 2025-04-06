@@ -264,30 +264,77 @@ struct HealthAccessView: View {
     }
     
     private func requestAuthorization() {
-        healthManager.requestHealthAuthorization()
-        // After authorization, automatically import data
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        print("🔑 Starting authorization request")
+        
+        // First check if we're already authorized
+        if healthManager.isAuthorized {
+            print("🔑 Already authorized, proceeding to import")
             importHealthData()
+            return
+        }
+        
+        // Request authorization directly
+        healthManager.requestHealthAuthorization()
+        
+        // After authorization request, check status and proceed accordingly
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            if healthManager.isAuthorized {
+                print("🔑 Authorization successful")
+                
+                // First sync existing manual entries to Apple Health
+                print("📤 Syncing existing manual entries to Apple Health")
+                self.historyManager.syncManualEntriesToHealthKit()
+                
+                // Then import Apple Health data
+                print("📥 Importing data from Apple Health")
+                self.importHealthData()
+            } else {
+                print("❌ Authorization failed or denied")
+                // Show an alert or message to the user
+            }
         }
     }
     
     private func importHealthData() {
+        print("📥 Starting health data import")
         isLoading = true
         healthManager.importAllHealthData(historyManager: historyManager) { success in
             isLoading = false
             showDebugInfo = true
+            if success {
+                print("✅ Health data import successful")
+                // After successful import, sync any remaining manual entries
+                if healthManager.isAuthorized {
+                    print("📤 Syncing manual entries after import")
+                    self.historyManager.syncManualEntriesToHealthKit()
+                } else {
+                    print("❌ Cannot sync manual entries - not authorized")
+                }
+            } else {
+                print("❌ Health data import failed")
+            }
         }
     }
     
     private func refreshData() {
         // Only refresh if we have Apple Health data connected
         if hasAppleHealthData {
+            print("🔄 Starting data refresh")
             isRefreshing = true
             healthManager.importAllHealthData(historyManager: historyManager) { success in
                 isRefreshing = false
                 showDebugInfo = true
+                if success {
+                    print("✅ Data refresh successful")
+                    // After successful refresh, sync manual entries
+                    print("📤 Syncing manual entries after refresh")
+                    self.historyManager.syncManualEntriesToHealthKit()
+                } else {
+                    print("❌ Data refresh failed")
+                }
             }
         } else {
+            print("⚠️ No Apple Health data to refresh")
             isRefreshing = false
         }
     }
