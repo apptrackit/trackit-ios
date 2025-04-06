@@ -1,8 +1,11 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var historyManager = StatsHistoryManager()
+    @StateObject private var historyManager = StatsHistoryManager.shared
+    @StateObject private var healthManager = HealthManager()
     @State private var showingAddEntrySheet = false
+    @State private var showingSettingsSheet = false
+    @State private var isRefreshing = false
     
     // Computed properties to get latest values or nil
     private var weight: Double? {
@@ -26,71 +29,67 @@ struct ContentView: View {
     }
     
     var body: some View {
-        ZStack {
-            VStack {
-                HStack {
-                    Text("Dashboard")
-                        .font(.title.bold())
-                        .foregroundColor(.white)
-                    Spacer()
-                    Button(action: signOut) {
-                        Image(systemName: "person.circle.fill")
-                            .resizable()
-                            .frame(width: 30, height: 30)
-                            .foregroundColor(.white)
+        NavigationStack {
+            ZStack {
+                Color.black.edgesIgnoringSafeArea(.all)
+                
+                ScrollView {
+                    RefreshControl(isRefreshing: $isRefreshing) {
+                        refreshData()
+                    }
+                    
+                    VStack(spacing: 20) {
+                        GridView(weight: weight, height: height, bmi: bmi, bodyFat: bodyFat, historyManager: historyManager)
+                            .padding(.top,-40)
+                        
+                        Spacer()
                     }
                 }
-                .padding()
-                
-                if weight == nil && height == nil && bodyFat == nil {
-                    ContentUnavailableView {
-                        Label("No Data", systemImage: "chart.bar.xaxis")
-                    } description: {
-                        Text("Tap on a card to add your first measurement")
-                    }
-                    .foregroundColor(.white)
-                } else {
-                    GridView(
-                        weight: weight,
-                        height: height,
-                        bmi: bmi,
-                        bodyFat: bodyFat,
-                        historyManager: historyManager
-                    )
-                    .frame(maxHeight: .infinity, alignment: .top)
-                }
-                
-                Spacer()
             }
-            .background(Color.black.ignoresSafeArea())
-            
-            // Floating action button
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
+            .navigationTitle("Dashboard")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         showingAddEntrySheet = true
                     }) {
                         Image(systemName: "plus")
-                            .font(.title)
-                            .foregroundColor(.white)
-                            .frame(width: 60, height: 60)
-                            .background(Color.blue)
-                            .clipShape(Circle())
-                            .shadow(radius: 5)
                     }
-                    .padding(.trailing, 20)
-                    .padding(.bottom, 20)
+                }
+                
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: {
+                        showingSettingsSheet = true
+                    }) {
+                        Image(systemName: "gear")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingAddEntrySheet) {
+                TrackDataView(historyManager: historyManager)
+            }
+            .sheet(isPresented: $showingSettingsSheet) {
+                SettingsView(historyManager: historyManager)
+            }
+            .onAppear {
+                // Sync with Apple Health when the app launches
+                if healthManager.isAuthorized {
+                    healthManager.importAllHealthData(historyManager: historyManager) { _ in
+                        print("Initial sync completed on app launch")
+                    }
                 }
             }
         }
-        .sheet(isPresented: $showingAddEntrySheet) {
-            TrackDataView(historyManager: historyManager)
-        }
     }
     
-    func signOut() {
-        print("User signed out")
+    private func refreshData() {
+        isRefreshing = true
+        if healthManager.isAuthorized {
+            healthManager.importAllHealthData(historyManager: historyManager) { _ in
+                isRefreshing = false
+            }
+        } else {
+            isRefreshing = false
+        }
     }
 }

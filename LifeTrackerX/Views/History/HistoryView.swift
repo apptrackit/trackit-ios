@@ -32,7 +32,7 @@ struct HistoryView: View {
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             
-                            if !entries.isEmpty {
+                            if !entries.isEmpty && statType != .bmi {
                                 Button(action: {
                                     withAnimation {
                                         isEditMode.toggle()
@@ -45,18 +45,53 @@ struct HistoryView: View {
                         }
                         .padding(.horizontal)
                         
-                        if entries.isEmpty {
-                            ContentUnavailableView {
-                                Label("No \(statType.title) History", systemImage: "chart.xyaxis.line")
-                            } description: {
-                                Text("Tap + to add your first \(statType.title.lowercased()) entry")
+                        // Legend for data sources
+                        HStack(spacing: 20) {
+                            HStack(spacing: 5) {
+                                Image("applehealthdark")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
+                                Text("Apple Health")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
                             }
-                            .foregroundColor(.white)
+                            
+                            HStack(spacing: 5) {
+                                Image(systemName: "figure.walk")
+                                    .foregroundColor(.blue)
+                                Text("Manual Entry")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.bottom, 5)
+                        
+                        if entries.isEmpty {
+                            VStack(spacing: 12) {
+                                Image(systemName: "chart.xyaxis.line")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.gray)
+                                
+                                Text("No \(statType.title) History")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                
+                                Text(statType == .bmi ? 
+                                    "BMI is automatically calculated from your weight and height" :
+                                    "Tap + to add your first \(statType.title.lowercased()) entry")
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
                         } else {
                             LazyVStack {
                                 ForEach(entries) { entry in
                                     HStack {
-                                        if isEditMode {
+                                        if isEditMode && statType != .bmi {
                                             Button(action: {
                                                 withAnimation(.easeInOut) {
                                                     historyManager.removeEntry(entry)
@@ -69,9 +104,13 @@ struct HistoryView: View {
                                             .transition(.move(edge: .leading))
                                         }
                                         
-                                        EntryRow(entry: entry, statType: statType) {
-                                            if !isEditMode {
-                                                selectedEntry = entry
+                                        if statType == .bmi {
+                                            BMIRow(entry: entry, historyManager: historyManager)
+                                        } else {
+                                            EntryRow(entry: entry, statType: statType) {
+                                                if !isEditMode {
+                                                    selectedEntry = entry
+                                                }
                                             }
                                         }
                                     }
@@ -95,10 +134,12 @@ struct HistoryView: View {
                     }
                 }
                 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showingAddEntryView = true }) {
-                        Image(systemName: "plus")
-                            .foregroundColor(.white)
+                if statType != .bmi {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: { showingAddEntryView = true }) {
+                            Image(systemName: "plus")
+                                .foregroundColor(.white)
+                        }
                     }
                 }
             }

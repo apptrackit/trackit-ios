@@ -10,7 +10,19 @@ struct StatCard: View {
     @State private var showingHistoryView = false
     
     var body: some View {
-        HStack {
+        ZStack(alignment: .leading) {
+            // Background with chart
+            HStack {
+                Spacer()
+                if title == "BMI" && value != "N/A",
+                   let manager = historyManager,
+                   let type = statType {
+                    MiniChartView(historyManager: manager, statType: type)
+                        .padding(.trailing, 20)
+                }
+            }
+            
+            // Content
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 15, weight: .bold))
@@ -21,22 +33,22 @@ struct StatCard: View {
                         .font(.system(size: 24, weight: .bold))
                         .foregroundColor(.gray)
                         .padding(.top, 10)
+                } else if title == "BMI" {
+                    // Direct display for BMI with large font
+                    Text(value)
+                        .font(.system(size: 36, weight: .bold))
+                        .foregroundColor(.white)
+                        .zIndex(1) // Ensure text is on top
                 } else {
+                    // For other stats with units
+                    let components = value.components(separatedBy: " ")
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        let components = value.components(separatedBy: " ")
-                        let numberPart = components[0]
+                        Text(components[0])
+                            .font(.system(size: 36, weight: .bold))
+                            .foregroundColor(.white)
+                            .zIndex(1) // Ensure text is on top
                         
-                        if let number = Double(numberPart) {
-                            Text(String(format: number.truncatingRemainder(dividingBy: 1) == 0 ? "%.0f" : "%.1f", number))
-                                .font(.system(size: 36, weight: .bold))
-                                .foregroundColor(.white)
-                        } else {
-                            Text(numberPart)
-                                .font(.system(size: 36, weight: .bold))
-                                .foregroundColor(.white)
-                        }
-                        
-                        if components.count > 1 && title != "BMI" {
+                        if components.count > 1 {
                             Text(components[1])
                                 .font(.system(size: 20, weight: .bold))
                                 .foregroundColor(.white)
@@ -45,15 +57,13 @@ struct StatCard: View {
                 }
             }
             .padding(.leading, 20)
-            
-            Spacer()
         }
         .frame(width: 159, height: 100, alignment: .leading)
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
         .cornerRadius(25)
         .padding(5)
         .onTapGesture {
-            if isEditable && statType != nil {
+            if statType != nil {
                 showingHistoryView = true
             }
         }
