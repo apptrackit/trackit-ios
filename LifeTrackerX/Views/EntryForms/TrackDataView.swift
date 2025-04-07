@@ -19,7 +19,7 @@ struct TrackDataView: View {
                         .padding()
                     
                     Picker("Select Data Type", selection: $selectedType) {
-                        ForEach(StatType.allCases.filter { $0 != .bmi }) { type in
+                        ForEach(StatType.allCases.filter { !$0.isCalculated }) { type in
                             Text(type.title).tag(type)
                         }
                     }

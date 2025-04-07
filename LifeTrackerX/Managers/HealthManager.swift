@@ -19,6 +19,7 @@ class HealthManager: ObservableObject {
         HKObjectType.quantityType(forIdentifier: .bodyMass)!,
         HKObjectType.quantityType(forIdentifier: .height)!,
         HKObjectType.quantityType(forIdentifier: .bodyFatPercentage)!,
+        HKObjectType.quantityType(forIdentifier: .waistCircumference)!,
         HKObjectType.quantityType(forIdentifier: .stepCount)!
     ]
     
@@ -26,7 +27,8 @@ class HealthManager: ObservableObject {
     private let typesToWrite: Set = [
         HKObjectType.quantityType(forIdentifier: .bodyMass)!,
         HKObjectType.quantityType(forIdentifier: .height)!,
-        HKObjectType.quantityType(forIdentifier: .bodyFatPercentage)!
+        HKObjectType.quantityType(forIdentifier: .bodyFatPercentage)!,
+        HKObjectType.quantityType(forIdentifier: .waistCircumference)!
     ]
     
     init() {
@@ -151,7 +153,7 @@ class HealthManager: ObservableObject {
         }
         
         var successCount = 0
-        let totalOperations = 3
+        let totalOperations = 4  // Updated to include waist
         
         importWeightHistory(historyManager: historyManager) { success in
             if success { successCount += 1 }
@@ -164,6 +166,11 @@ class HealthManager: ObservableObject {
         }
         
         importBodyFatHistory(historyManager: historyManager) { success in
+            if success { successCount += 1 }
+            checkCompletion()
+        }
+        
+        importWaistHistory(historyManager: historyManager) { success in
             if success { successCount += 1 }
             checkCompletion()
         }
@@ -396,6 +403,72 @@ class HealthManager: ObservableObject {
         healthStore.execute(query)
     }
     
+    // Import waist circumference data from HealthKit
+    private func importWaistHistory(historyManager: StatsHistoryManager, completion: @escaping (Bool) -> Void) {
+        guard let waistType = HKQuantityType.quantityType(forIdentifier: .waistCircumference) else {
+            DispatchQueue.main.async {
+                self.fetchingStatus = "Waist circumference type not available in HealthKit"
+            }
+            completion(false)
+            return
+        }
+        
+        let predicate = HKQuery.predicateForSamples(withStart: Date.distantPast, end: Date(), options: .strictEndDate)
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        
+        let query = HKSampleQuery(
+            sampleType: waistType,
+            predicate: predicate,
+            limit: HKObjectQueryNoLimit,
+            sortDescriptors: [sortDescriptor]
+        ) { [weak self] query, samples, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                DispatchQueue.main.async {
+                    print("Error fetching waist data: \(error.localizedDescription)")
+                    self.fetchingStatus = "Error fetching waist data: \(error.localizedDescription)"
+                    completion(false)
+                }
+                return
+            }
+            
+            guard let samples = samples as? [HKQuantitySample], !samples.isEmpty else {
+                DispatchQueue.main.async {
+                    print("No waist samples found")
+                    self.fetchingStatus = "No waist samples found"
+                    completion(true) // Still return true even if no data found
+                }
+                return
+            }
+            
+            DispatchQueue.main.async {
+                print("Fetched \(samples.count) waist samples")
+                self.fetchingStatus = "Fetched \(samples.count) waist samples"
+                
+                var addedCount = 0
+                for sample in samples {
+                    let waistInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
+                    let entry = StatEntry(
+                        date: sample.startDate,
+                        value: waistInCm,
+                        type: .waist,
+                        source: .appleHealth
+                    )
+                    historyManager.addEntry(entry)
+                    addedCount += 1
+                }
+                
+                print("Added \(addedCount) waist entries to history")
+                self.fetchingStatus = "Added \(addedCount) waist entries to history"
+                // Force history manager to notify its subscribers
+                historyManager.triggerUpdate()
+                completion(true)
+            }
+        }
+        healthStore.execute(query)
+    }
+    
     // Function to save a manual entry to HealthKit
     func saveToHealthKit(_ entry: StatEntry, completion: @escaping (Bool, Error?) -> Void) {
         var quantityType: HKQuantityType?
@@ -417,8 +490,12 @@ class HealthManager: ObservableObject {
             // Convert from percentage (15%) to decimal (0.15)
             value = entry.value / 100.0
             print("📝 Preparing to save body fat: \(value) \(unit) (converted from \(entry.value)%)")
-        case .bmi:
-            print("❌ BMI cannot be saved to HealthKit")
+        case .waist:
+            quantityType = HKQuantityType.quantityType(forIdentifier: .waistCircumference)
+            unit = HKUnit.meterUnit(with: .centi)
+            print("📝 Preparing to save waist: \(value) \(unit)")
+        case .bmi, .bicep, .chest, .thigh, .shoulder, .lbm, .fm, .ffmi, .bmr, .bsa:
+            print("❌ \(entry.type) cannot be saved to HealthKit")
             completion(false, nil)
             return
         }
@@ -473,9 +550,11 @@ class HealthManager: ObservableObject {
         case .bodyFat:
             quantityType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage)
             print("🗑️ Preparing to delete body fat entry")
-        case .bmi:
-            // BMI is calculated, not stored
-            print("❌ Cannot delete BMI from HealthKit - it's calculated")
+        case .waist:
+            quantityType = HKQuantityType.quantityType(forIdentifier: .waistCircumference)
+            print("🗑️ Preparing to delete waist entry")
+        case .bmi, .bicep, .chest, .thigh, .shoulder, .lbm, .fm, .ffmi, .bmr, .bsa:
+            print("❌ Cannot delete \(entry.type) from HealthKit - not supported")
             completion(false, nil)
             return
         }

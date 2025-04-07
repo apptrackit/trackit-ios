@@ -21,51 +21,80 @@ struct BMIRow: View {
         return nil
     }
     
+    private var bodyFat: Double? {
+        let bodyFatEntry = historyManager.getEntries(for: .bodyFat)
+            .filter { $0.date <= entry.date }
+            .sorted { $0.date > $1.date }
+            .first
+        
+        return bodyFatEntry?.value
+    }
+    
+    private var sourceDataText: String {
+        switch entry.type {
+        case .bmi:
+            if let data = weightAndHeight {
+                return "W: \(String(format: "%.1f", data.weight)) kg, H: \(String(format: "%.1f", data.height)) cm"
+            }
+        case .lbm, .fm:
+            if let data = weightAndHeight, let bf = bodyFat {
+                return "W: \(String(format: "%.1f", data.weight)) kg, BF: \(String(format: "%.1f", bf))%"
+            }
+        case .ffmi:
+            if let data = weightAndHeight, let bf = bodyFat {
+                return "W: \(String(format: "%.1f", data.weight)) kg, H: \(String(format: "%.1f", data.height)) cm, BF: \(String(format: "%.1f", bf))%"
+            }
+        case .bmr:
+            if let data = weightAndHeight, let bf = bodyFat {
+                let lbm = data.weight * (1 - bf / 100)
+                return "LBM: \(String(format: "%.1f", lbm)) kg"
+            }
+        case .bsa:
+            if let data = weightAndHeight {
+                return "W: \(String(format: "%.1f", data.weight)) kg, H: \(String(format: "%.1f", data.height)) cm"
+            }
+        default:
+            return ""
+        }
+        return ""
+    }
+    
     var body: some View {
         HStack {
             // Left side - Icon and value
             HStack(spacing: 12) {
-                // Different icon based on data source
-                if entry.source == .appleHealth {
-                    // Apple Health icon
-                    Image("applehealthdark")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 20, height: 20)
-                } else {
-                    Image(systemName: "figure.walk")
-                        .foregroundColor(.blue)
-                }
+                // Use automated icon
+                Image(systemName: entry.source.iconName)
+                    .foregroundColor(.orange)
                 
-                VStack(alignment: .leading, spacing: 2) {
-                    // BMI value
-                    Text(String(format: "%.1f", entry.value))
-                        .font(.title3)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                    
-                    // Weight and height values
-                    if let values = weightAndHeight {
-                        Text("\(String(format: "%.1f", values.weight)) kg × \(String(format: "%.1f", values.height)) cm")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                }
+                let formattedValue = String(format: "%.1f", entry.value)
+                    .replacingOccurrences(of: ".", with: ",")
+                
+                Text(formattedValue)
+                    .font(.title3)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
             }
             
             Spacer()
             
-            // Right side - Date
+            if !sourceDataText.isEmpty {
+                Text(sourceDataText)
+                    .foregroundColor(.gray)
+                    .font(.caption)
+            }
+            
             Text(formatDate(entry.date))
                 .foregroundColor(.gray)
                 .font(.subheadline)
+                .padding(.leading, 8)
         }
         .padding(.vertical, 12)
         .padding(.horizontal)
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
     }
     
-    private func formatDate(_ date: Date) -> String {
+    func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, yyyy 'at' H:mm"
         return formatter.string(from: date)

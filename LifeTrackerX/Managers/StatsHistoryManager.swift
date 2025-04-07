@@ -47,6 +47,92 @@ class StatsHistoryManager: ObservableObject {
         }
     }
     
+    private func recalculateAllDerivedValues() {
+        print("🔄 Recalculating all derived values...")
+        
+        // Get all entries sorted by date
+        let weightEntries = entries.filter { $0.type == .weight }.sorted { $0.date < $1.date }
+        let heightEntries = entries.filter { $0.type == .height }.sorted { $0.date < $1.date }
+        let bodyFatEntries = entries.filter { $0.type == .bodyFat }.sorted { $0.date < $1.date }
+        
+        // Remove all existing calculated entries
+        entries.removeAll { $0.type.isCalculated }
+        
+        // For each weight entry, calculate all possible derived values
+        for weightEntry in weightEntries {
+            let date = weightEntry.date
+            let weight = weightEntry.value
+            
+            // Find the most recent height and body fat at this time
+            if let height = heightEntries.last(where: { $0.date <= date })?.value {
+                // Calculate BMI
+                let heightInMeters = height / 100
+                let bmi = weight / (heightInMeters * heightInMeters)
+                entries.append(StatEntry(
+                    date: date,
+                    value: bmi,
+                    type: .bmi,
+                    source: .automated
+                ))
+                
+                // If we have body fat, calculate LBM, FM, FFMI, BMR
+                if let bodyFat = bodyFatEntries.last(where: { $0.date <= date })?.value {
+                    // Calculate LBM
+                    let lbm = weight * (1 - bodyFat / 100)
+                    entries.append(StatEntry(
+                        date: date,
+                        value: lbm,
+                        type: .lbm,
+                        source: .automated
+                    ))
+                    
+                    // Calculate FM
+                    let fm = weight * (bodyFat / 100)
+                    entries.append(StatEntry(
+                        date: date,
+                        value: fm,
+                        type: .fm,
+                        source: .automated
+                    ))
+                    
+                    // Calculate FFMI
+                    let ffmi = lbm / (heightInMeters * heightInMeters)
+                    entries.append(StatEntry(
+                        date: date,
+                        value: ffmi,
+                        type: .ffmi,
+                        source: .automated
+                    ))
+                    
+                    // Calculate BMR
+                    let bmr = 370 + (21.6 * lbm)
+                    entries.append(StatEntry(
+                        date: date,
+                        value: bmr,
+                        type: .bmr,
+                        source: .automated
+                    ))
+                }
+                
+                // Calculate BSA
+                let bsa = sqrt((height * weight) / 3600)
+                entries.append(StatEntry(
+                    date: date,
+                    value: bsa,
+                    type: .bsa,
+                    source: .automated
+                ))
+            }
+        }
+        
+        // Sort entries by date (newest first)
+        entries.sort { $0.date > $1.date }
+        saveEntries()
+        
+        // Force UI refresh
+        triggerUpdate()
+    }
+    
     func addEntry(_ entry: StatEntry) {
         // Need to ensure we're on the main thread when modifying @Published properties
         if !Thread.isMainThread {
@@ -74,15 +160,15 @@ class StatsHistoryManager: ObservableObject {
         // Sort entries by date (newest first)
         entries.sort { $0.date > $1.date }
         
-        // If this is a weight or height entry, recalculate BMI entries
-        if entry.type == .weight || entry.type == .height {
-            recalculateBMIEntries()
+        // If this is a weight, height, or body fat entry, recalculate all derived values
+        if entry.type == .weight || entry.type == .height || entry.type == .bodyFat {
+            recalculateAllDerivedValues()
+        } else {
+            saveEntries()
         }
         
-        saveEntries()
-        
         // If this is a manual entry and not from Apple Health, sync to HealthKit
-        if entry.source == .manual && entry.type != .bmi {
+        if entry.source == .manual && !entry.type.isCalculated {
             print("⭐️ Attempting to sync manual entry to HealthKit")
             print("⭐️ HealthKit authorized: \(healthManager.isAuthorized)")
             
@@ -103,54 +189,6 @@ class StatsHistoryManager: ObservableObject {
         triggerUpdate()
     }
     
-    private func recalculateBMIEntries() {
-        print("🔄 Recalculating BMI entries...")
-        
-        // Get all weight and height entries sorted by date
-        let weightEntries = entries.filter { $0.type == .weight }.sorted { $0.date < $1.date }
-        let heightEntries = entries.filter { $0.type == .height }.sorted { $0.date < $1.date }
-        
-        print("🔄 Found \(weightEntries.count) weight entries")
-        print("🔄 Found \(heightEntries.count) height entries")
-        
-        // Remove all existing BMI entries
-        let oldBMICount = entries.filter { $0.type == .bmi }.count
-        entries.removeAll { $0.type == .bmi }
-        print("🔄 Removed \(oldBMICount) existing BMI entries")
-        
-        var newBMICount = 0
-        
-        // Calculate BMI for each weight entry using the most recent height at that time
-        for weightEntry in weightEntries {
-            if let heightEntry = heightEntries.last(where: { $0.date <= weightEntry.date }) {
-                let heightInMeters = heightEntry.value / 100
-                let bmi = weightEntry.value / (heightInMeters * heightInMeters)
-                
-                print("🔄 Calculating BMI for weight=\(weightEntry.value)kg, height=\(heightEntry.value)cm")
-                print("🔄 BMI = \(bmi) on \(weightEntry.date)")
-                
-                // Create BMI entry with the same date as the weight entry
-                let bmiEntry = StatEntry(
-                    date: weightEntry.date,
-                    value: bmi,
-                    type: .bmi,
-                    source: weightEntry.source // Use the same source as the weight entry
-                )
-                entries.append(bmiEntry)
-                newBMICount += 1
-            }
-        }
-        
-        print("🔄 Created \(newBMICount) new BMI entries")
-        
-        // Sort entries by date (newest first)
-        entries.sort { $0.date > $1.date }
-        saveEntries()
-        
-        // Force UI refresh
-        triggerUpdate()
-    }
-    
     func removeEntry(_ entry: StatEntry) {
         if !Thread.isMainThread {
             DispatchQueue.main.async {
@@ -163,7 +201,7 @@ class StatsHistoryManager: ObservableObject {
         
         // If this is a weight or height entry, recalculate BMI entries
         if entry.type == .weight || entry.type == .height {
-            recalculateBMIEntries()
+            recalculateAllDerivedValues()
         }
         
         // If this was a manual entry, also delete from HealthKit
@@ -219,7 +257,7 @@ class StatsHistoryManager: ObservableObject {
             
             // If this is a weight or height entry, recalculate BMI entries
             if entry.type == .weight || entry.type == .height {
-                recalculateBMIEntries()
+                recalculateAllDerivedValues()
             }
             
             saveEntries()
@@ -261,7 +299,7 @@ class StatsHistoryManager: ObservableObject {
             print("📱 Body Fat entries: \(entries.filter { $0.type == .bodyFat }.count)")
             
             // Recalculate BMI entries when loading data
-            recalculateBMIEntries()
+            recalculateAllDerivedValues()
         } else {
             print("📱 No entries found in storage or failed to decode")
         }
@@ -278,7 +316,7 @@ class StatsHistoryManager: ObservableObject {
     func clearEntries(from source: StatSource) {
         entries.removeAll { $0.source == source }
         // Recalculate BMI entries after clearing data
-        recalculateBMIEntries()
+        recalculateAllDerivedValues()
         saveEntries()
         triggerUpdate()
     }

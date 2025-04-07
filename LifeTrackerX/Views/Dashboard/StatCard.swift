@@ -69,7 +69,7 @@ struct StatCard: View {
         }
         .sheet(isPresented: $showingHistoryView) {
             if let type = statType, let manager = historyManager {
-                HistoryView(historyManager: manager, statType: type)
+                HistoryViewModal(historyManager: manager, statType: type)
             }
         }
     }

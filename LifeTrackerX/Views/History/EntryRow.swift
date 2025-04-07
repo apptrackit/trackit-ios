@@ -16,8 +16,13 @@ struct EntryRow: View {
                         .resizable()
                         .scaledToFit()
                         .frame(width: 20, height: 20)
+                } else if entry.source == .automated {
+                    // Automated calculations icon
+                    Image(systemName: entry.source.iconName)
+                        .foregroundColor(.orange)
                 } else {
-                    Image(systemName: "figure.walk")
+                    // Manual entry icon
+                    Image(systemName: entry.source.iconName)
                         .foregroundColor(.blue)
                 }
                 
@@ -39,12 +44,14 @@ struct EntryRow: View {
                 .foregroundColor(.gray)
                 .font(.subheadline)
             
-            // Chevron button
-            Button(action: onEdit) {
-                Image(systemName: "chevron.right")
-                    .foregroundColor(.gray)
+            // Chevron button for editable entries only
+            if entry.source != .automated {
+                Button(action: onEdit) {
+                    Image(systemName: "chevron.right")
+                        .foregroundColor(.gray)
+                }
+                .padding(.leading, 8)
             }
-            .padding(.leading, 8)
         }
         .padding(.vertical, 12)
         .padding(.horizontal)
