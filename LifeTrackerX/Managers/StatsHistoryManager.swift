@@ -281,6 +281,26 @@ class StatsHistoryManager: ObservableObject {
         return entries.filter { $0.type == type && $0.source == source }.sorted(by: { $0.date > $1.date })
     }
     
+    func getEntriesAt(date: Date) -> [StatEntry] {
+        let relevantTypes: [StatType] = [.weight, .height, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder]
+        var result: [StatEntry] = []
+        
+        for type in relevantTypes {
+            if let entry = getEntries(for: type)
+                .filter({ $0.date <= date })
+                .sorted(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })
+                .first {
+                // Only include if the entry is within 7 days of the given date
+                let dayDifference = abs(Calendar.current.dateComponents([.day], from: date, to: entry.date).day ?? 0)
+                if dayDifference <= 7 {
+                    result.append(entry)
+                }
+            }
+        }
+        
+        return result
+    }
+    
     private func saveEntries() {
         if let encoded = try? JSONEncoder().encode(entries) {
             UserDefaults.standard.set(encoded, forKey: saveKey)

@@ -14,6 +14,24 @@ struct MainTabView: View {
             }
             .tag(0)
             
+            // Progress Tab (measurements)
+            NavigationStack {
+                ProgressView()
+            }
+            .tabItem {
+                Label("Metrics", systemImage: "chart.line.uptrend.xyaxis")
+            }
+            .tag(1)
+            
+            // Progress Photos Tab (new)
+            NavigationStack {
+                ProgressPhotosView()
+            }
+            .tabItem {
+                Label("Photos", systemImage: "photo.fill")
+            }
+            .tag(2)
+            
             // Nutrition Tab
             NavigationStack {
                 PlaceholderView(title: "Nutrition")
@@ -21,7 +39,7 @@ struct MainTabView: View {
             .tabItem {
                 Label("Nutrition", systemImage: "fork.knife")
             }
-            .tag(1)
+            .tag(3)
             
             // Workout Tab
             NavigationStack {
@@ -29,24 +47,6 @@ struct MainTabView: View {
             }
             .tabItem {
                 Label("Workout", systemImage: "dumbbell.fill")
-            }
-            .tag(2)
-            
-            // Progress Tab
-            NavigationStack {
-                ProgressView()
-            }
-            .tabItem {
-                Label("Progress", systemImage: "chart.line.uptrend.xyaxis")
-            }
-            .tag(3)
-            
-            // Profile Tab
-            NavigationStack {
-                PlaceholderView(title: "Profile")
-            }
-            .tabItem {
-                Label("Profile", systemImage: "person.fill")
             }
             .tag(4)
         }
