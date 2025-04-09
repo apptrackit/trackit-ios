@@ -5,6 +5,7 @@ struct ProgressPhotosView: View {
     @StateObject private var historyManager = StatsHistoryManager.shared
     @State private var showingAddPhotoSheet = false
     @State private var selectedCategory: PhotoCategory?
+    @State private var selectedPhoto: ProgressPhoto?
     
     private let columns = [
         GridItem(.flexible()),
@@ -16,10 +17,10 @@ struct ProgressPhotosView: View {
             Color.black.edgesIgnoringSafeArea(.all)
             
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 12) {
                     // Categories scroll view
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 15) {
+                        HStack(spacing: 10) {
                             ForEach(PhotoCategory.allCases) { category in
                                 CategoryButton(
                                     category: category,
@@ -36,36 +37,35 @@ struct ProgressPhotosView: View {
                                 )
                             }
                         }
-                        .padding(.horizontal)
+                        .padding(.horizontal, 8)
                     }
-                    .padding(.top, 10)
+                    .padding(.top, 8)
                     
                     // Before/After comparison cards
-                    VStack(spacing: 15) {
+                    VStack(spacing: 10) {
                         if let category = selectedCategory {
-                            let comparisonData = photoManager.getComparisonPhotos(for: category)
+                            let photos = photoManager.getPhotos(for: category)
                             
-                            if let latest = comparisonData.latest {
-                                if let previous = comparisonData.previous {
-                                    // We have both photos for comparison
-                                    ComparisonCard(
-                                        oldPhoto: previous,
-                                        newPhoto: latest,
-                                        historyManager: historyManager
-                                    )
-                                } else {
-                                    // We only have one photo
-                                    SinglePhotoCard(
-                                        photo: latest, 
-                                        historyManager: historyManager
-                                    )
-                                }
+                            if photos.count >= 2 {
+                                // We have at least two photos for comparison
+                                ComparisonCard(
+                                    photoManager: photoManager,
+                                    category: category,
+                                    historyManager: historyManager
+                                )
+                            } else if photos.count == 1 {
+                                // We only have one photo
+                                SinglePhotoCard(
+                                    photo: photos[0], 
+                                    historyManager: historyManager
+                                )
                             } else {
                                 EmptyStateView(category: category)
+                                    .padding(.horizontal, 4)
                             }
                         } else {
                             // Summary grid of latest photos per category
-                            LazyVGrid(columns: columns, spacing: 16) {
+                            LazyVGrid(columns: columns, spacing: 8) {
                                 let latestByCategory = photoManager.getLatestPhotosByCategory()
                                 
                                 ForEach(PhotoCategory.allCases) { category in
@@ -88,19 +88,63 @@ struct ProgressPhotosView: View {
                                     }
                                 }
                             }
-                            .padding(.horizontal)
+                            .padding(.horizontal, 8)
                         }
                     }
                     
                     // Photo history if category is selected
                     if let category = selectedCategory {
-                        PhotoHistoryView(
-                            category: category,
-                            photoManager: photoManager,
-                            historyManager: historyManager
-                        )
+                        Spacer(minLength: 25)
+                        
+                        // Section header
+                        HStack {
+                            Text("Photo History")
+                                .font(.title3)
+                                .foregroundColor(.white)
+                            
+                            Spacer()
+                            
+                            HStack(spacing: 5) {
+                                Image(systemName: "photo.stack.fill")
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                                
+                                Text("\(photoManager.getPhotos(for: category).count) photos")
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        .padding(.horizontal)
+                        
+                        let groupedPhotos = photoManager.getPhotosByDate(category: category)
+                        
+                        if groupedPhotos.isEmpty {
+                            EmptyStateView(category: category)
+                                .padding(.horizontal, 4)
+                        } else {
+                            // Group by date
+                            VStack(spacing: 16) {
+                                ForEach(groupedPhotos.keys.sorted(by: >), id: \.self) { date in
+                                    if let photos = groupedPhotos[date] {
+                                        DateGroupHeader(date: date)
+                                            .padding(.horizontal)
+                                        
+                                        // Photos grid
+                                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                                            ForEach(photos) { photo in
+                                                PhotoThumbnail(photo: photo) {
+                                                    selectedPhoto = photo
+                                                }
+                                            }
+                                        }
+                                        .padding(.horizontal)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
+                .padding(.bottom, 20)
             }
         }
         .navigationTitle("Progress Photos")
@@ -122,6 +166,13 @@ struct ProgressPhotosView: View {
                 category: selectedCategory
             )
         }
+        .sheet(item: $selectedPhoto) { photo in
+            PhotoDetailView(
+                photo: photo,
+                photoManager: photoManager,
+                historyManager: historyManager
+            )
+        }
     }
 }
 
@@ -132,24 +183,25 @@ struct CategoryButton: View {
     
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 8) {
+            VStack(spacing: 4) {
                 ZStack {
                     Circle()
                         .fill(isSelected ? Color.blue : Color(red: 0.2, green: 0.2, blue: 0.2))
-                        .frame(width: 70, height: 70)
+                        .frame(width: 50, height: 50)
                     
                     Image(systemName: category.iconName)
-                        .font(.system(size: 30))
+                        .font(.system(size: 20))
                         .foregroundColor(.white)
                 }
                 
                 Text(category.name)
-                    .font(.caption)
+                    .font(.system(size: 12))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
+                    .lineLimit(1)
             }
         }
-        .frame(width: 80)
+        .frame(width: 55)
     }
 }
 
@@ -157,25 +209,24 @@ struct EmptyStateView: View {
     let category: PhotoCategory
     
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 10) {
             Image(systemName: "photo.fill")
-                .font(.system(size: 60))
+                .font(.system(size: 40))
                 .foregroundColor(.gray)
             
             Text("No \(category.name) Photos")
-                .font(.title3)
+                .font(.headline)
                 .foregroundColor(.white)
             
-            Text("Take your first photo to start tracking your progress.")
+            Text("Take your first photo")
                 .multilineTextAlignment(.center)
                 .foregroundColor(.gray)
-                .padding(.horizontal)
+                .font(.body)
         }
         .frame(maxWidth: .infinity)
-        .padding(40)
+        .padding(20)
         .background(Color(red: 0.15, green: 0.15, blue: 0.15))
-        .cornerRadius(16)
-        .padding(.horizontal)
+        .cornerRadius(12)
     }
 }
 
@@ -191,14 +242,15 @@ struct CategoryPhotoCard: View {
                     Image(uiImage: uiImage)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(height: 180)
+                        .frame(height: 150)
                         .clipped()
                 }
                 
-                VStack(alignment: .leading) {
+                VStack(alignment: .leading, spacing: 2) {
                     HStack {
                         Image(systemName: category.iconName)
                             .foregroundColor(.white)
+                            .font(.system(size: 14))
                         
                         Text(category.name)
                             .font(.system(size: 14, weight: .semibold))
@@ -206,11 +258,11 @@ struct CategoryPhotoCard: View {
                     }
                     
                     Text(formatDate(photo.date))
-                        .font(.caption)
+                        .font(.system(size: 12))
                         .foregroundColor(.gray)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
+                .padding(8)
                 .background(
                     LinearGradient(
                         gradient: Gradient(colors: [Color.black.opacity(0.7), Color.black.opacity(0.3)]),
@@ -219,14 +271,14 @@ struct CategoryPhotoCard: View {
                     )
                 )
             }
-            .cornerRadius(16)
-            .frame(height: 180)
+            .cornerRadius(12)
+            .frame(height: 150)
         }
     }
     
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy"
+        formatter.dateFormat = "MM/dd/yy"
         return formatter.string(from: date)
     }
 }
@@ -237,23 +289,23 @@ struct CategoryEmptyCard: View {
     
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 15) {
+            VStack(spacing: 8) {
                 Image(systemName: category.iconName)
-                    .font(.system(size: 30))
+                    .font(.system(size: 24))
                     .foregroundColor(.gray)
                 
                 Text(category.name)
                     .font(.subheadline)
                     .foregroundColor(.white)
                 
-                Text("Add Photo")
-                    .font(.caption)
+                Text("Add")
+                    .font(.system(size: 12))
                     .foregroundColor(.blue)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 180)
+            .frame(height: 150)
             .background(Color(red: 0.15, green: 0.15, blue: 0.15))
-            .cornerRadius(16)
+            .cornerRadius(12)
         }
     }
 }

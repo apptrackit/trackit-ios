@@ -1,156 +1,199 @@
 import SwiftUI
 
 struct ComparisonCard: View {
-    let oldPhoto: ProgressPhoto
-    let newPhoto: ProgressPhoto
+    @ObservedObject var photoManager: ProgressPhotoManager
+    let category: PhotoCategory
     let historyManager: StatsHistoryManager
     
-    @State private var sliderPosition: CGFloat = 0.5
-    @State private var cardWidth: CGFloat = 0
+    @State private var leftPhotoIndex: Int = 0
+    @State private var rightPhotoIndex: Int = 1
+    @State private var showingPhotoSelector = false
+    @State private var isSelectingLeftPhoto = true
+    
+    private var categoryPhotos: [ProgressPhoto] {
+        photoManager.getPhotos(for: category)
+    }
+    
+    private var leftPhoto: ProgressPhoto? {
+        categoryPhotos.indices.contains(leftPhotoIndex) ? categoryPhotos[leftPhotoIndex] : nil
+    }
+    
+    private var rightPhoto: ProgressPhoto? {
+        categoryPhotos.indices.contains(rightPhotoIndex) ? categoryPhotos[rightPhotoIndex] : nil
+    }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header
             HStack {
-                Text("Progress Comparison")
-                    .font(.headline)
+                Text("Comparison")
+                    .font(.title3)
+                    .fontWeight(.bold)
                     .foregroundColor(.white)
                 
                 Spacer()
                 
-                // Time difference
-                HStack(spacing: 5) {
-                    Image(systemName: "calendar")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                    
-                    Text(formatTimeDifference(from: oldPhoto.date, to: newPhoto.date))
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-            }
-            .padding(.horizontal)
-            
-            // Before/After dates
-            HStack {
-                Text(formatDate(oldPhoto.date))
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-                
-                Spacer()
-                
-                Text(formatDate(newPhoto.date))
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-            }
-            .padding(.horizontal)
-            
-            // Image comparison with slider
-            ZStack(alignment: .leading) {
-                // Container to measure width
-                GeometryReader { geometry in
-                    Color.clear
-                        .onAppear {
-                            self.cardWidth = geometry.size.width
-                        }
-                }
-                
-                // Old photo (full width)
-                if let oldImage = oldPhoto.image {
-                    Image(uiImage: oldImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(height: 400)
-                        .clipped()
-                        .cornerRadius(12)
-                }
-                
-                // New photo (masked by slider position)
-                if let newImage = newPhoto.image {
-                    Image(uiImage: newImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(height: 400)
-                        .clipped()
-                        .cornerRadius(12)
-                        .mask(
-                            Rectangle()
-                                .frame(width: cardWidth * sliderPosition)
-                        )
-                }
-                
-                // Slider handle
-                Rectangle()
-                    .frame(width: 3, height: 400)
-                    .offset(x: cardWidth * sliderPosition)
-                    .gesture(
-                        DragGesture()
-                            .onChanged { value in
-                                let newPosition = value.location.x / cardWidth
-                                sliderPosition = min(max(newPosition, 0), 1)
-                            }
-                    )
-                
-                // Slider handle knob
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 30, height: 30)
-                    .offset(x: cardWidth * sliderPosition - 15)
-                    .shadow(radius: 2)
-                    .gesture(
-                        DragGesture()
-                            .onChanged { value in
-                                let newPosition = value.location.x / cardWidth
-                                sliderPosition = min(max(newPosition, 0), 1)
-                            }
-                    )
-                
-                // Before/After labels
-                ZStack(alignment: .top) {
-                    HStack {
-                        Text("BEFORE")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .padding(6)
-                            .background(Color.black.opacity(0.6))
-                            .cornerRadius(4)
-                            .padding(.leading, 8)
-                            .padding(.top, 8)
+                if let leftPhoto = leftPhoto, let rightPhoto = rightPhoto {
+                    // Time difference
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 14))
+                            .foregroundColor(.gray)
                         
-                        Spacer()
-                        
-                        Text("AFTER")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .padding(6)
-                            .background(Color.black.opacity(0.6))
-                            .cornerRadius(4)
-                            .padding(.trailing, 8)
-                            .padding(.top, 8)
+                        Text(formatTimeDifference(from: leftPhoto.date, to: rightPhoto.date))
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.gray)
                     }
                 }
             }
-            .frame(height: 400)
-            .cornerRadius(12)
-            .padding(.horizontal)
+            .padding(.horizontal, 8)
+            .padding(.top, 10)
+            
+            // Photo comparison
+            GeometryReader { geometry in
+                let availableWidth = geometry.size.width - 16
+                let photoWidth = (availableWidth / 2) - 4
+                let photoHeight = photoWidth * 1.4 // Taller photos
+                
+                HStack(spacing: 8) {
+                    // Left photo with date and controls
+                    VStack(spacing: 4) {
+                        if let photo = leftPhoto, let image = photo.image {
+                            ZStack(alignment: .topLeading) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: photoWidth, height: photoHeight)
+                                    .clipped()
+                                    .cornerRadius(10)
+                                
+                                Text("BEFORE")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(5)
+                                    .background(Color.black.opacity(0.6))
+                                    .cornerRadius(5)
+                                    .padding(6)
+                            }
+                            .onTapGesture {
+                                isSelectingLeftPhoto = true
+                                showingPhotoSelector = true
+                            }
+                        } else {
+                            Rectangle()
+                                .fill(Color(red: 0.15, green: 0.15, blue: 0.15))
+                                .frame(width: photoWidth, height: photoHeight)
+                                .cornerRadius(10)
+                                .overlay(
+                                    Text("Select photo")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.gray)
+                                )
+                                .onTapGesture {
+                                    isSelectingLeftPhoto = true
+                                    showingPhotoSelector = true
+                                }
+                        }
+                        
+                        if let photo = leftPhoto {
+                            Text(formatDate(photo.date))
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                        }
+                    }
+                    
+                    // Right photo with date and controls
+                    VStack(spacing: 4) {
+                        if let photo = rightPhoto, let image = photo.image {
+                            ZStack(alignment: .topLeading) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: photoWidth, height: photoHeight)
+                                    .clipped()
+                                    .cornerRadius(10)
+                                
+                                Text("AFTER")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(5)
+                                    .background(Color.black.opacity(0.6))
+                                    .cornerRadius(5)
+                                    .padding(6)
+                            }
+                            .onTapGesture {
+                                isSelectingLeftPhoto = false
+                                showingPhotoSelector = true
+                            }
+                        } else {
+                            Rectangle()
+                                .fill(Color(red: 0.15, green: 0.15, blue: 0.15))
+                                .frame(width: photoWidth, height: photoHeight)
+                                .cornerRadius(10)
+                                .overlay(
+                                    Text("Select photo")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.gray)
+                                )
+                                .onTapGesture {
+                                    isSelectingLeftPhoto = false
+                                    showingPhotoSelector = true
+                                }
+                        }
+                        
+                        if let photo = rightPhoto {
+                            Text(formatDate(photo.date))
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .padding(.horizontal, 8)
+            }
+            .frame(height: 300)
             
             // Stats comparison
-            MeasurementComparisonView(
-                oldPhoto: oldPhoto, 
-                newPhoto: newPhoto,
-                historyManager: historyManager
-            )
-            .padding()
+            if let leftPhoto = leftPhoto, let rightPhoto = rightPhoto {
+                MeasurementComparisonView(
+                    oldPhoto: leftPhoto, 
+                    newPhoto: rightPhoto,
+                    historyManager: historyManager
+                )
+                .padding(.top, 4)
+            }
         }
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-        .cornerRadius(16)
-        .padding(.horizontal)
+        .cornerRadius(14)
+        .padding(.horizontal, 4)
+        .onAppear {
+            // Initialize with latest photos
+            if categoryPhotos.count >= 2 {
+                rightPhotoIndex = categoryPhotos.count - 1
+                leftPhotoIndex = rightPhotoIndex - 1
+            }
+        }
+        .sheet(isPresented: $showingPhotoSelector) {
+            PhotoSelectorView(
+                photos: categoryPhotos,
+                onSelect: { selectedIndex in
+                    if isSelectingLeftPhoto {
+                        leftPhotoIndex = selectedIndex
+                    } else {
+                        rightPhotoIndex = selectedIndex
+                    }
+                    showingPhotoSelector = false
+                },
+                currentlySelectedIndex: isSelectingLeftPhoto ? leftPhotoIndex : rightPhotoIndex,
+                title: isSelectingLeftPhoto ? "Select Left Photo" : "Select Right Photo"
+            )
+        }
     }
     
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy"
+        formatter.dateFormat = "MM/dd/yy"
         return formatter.string(from: date)
     }
     
@@ -159,12 +202,84 @@ struct ComparisonCard: View {
         let components = calendar.dateComponents([.day, .month], from: startDate, to: endDate)
         
         if let months = components.month, months > 0 {
-            return "\(months) month\(months == 1 ? "" : "s") difference"
+            return "\(months)m"
         } else if let days = components.day, days > 0 {
-            return "\(days) day\(days == 1 ? "" : "s") difference"
+            return "\(days)d"
         } else {
-            return "Same day"
+            return "Today"
         }
+    }
+}
+
+struct PhotoSelectorView: View {
+    let photos: [ProgressPhoto]
+    let onSelect: (Int) -> Void
+    let currentlySelectedIndex: Int
+    let title: String
+    @Environment(\.presentationMode) var presentationMode
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.black.edgesIgnoringSafeArea(.all)
+                
+                VStack {
+                    // Photo grid
+                    ScrollView {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
+                            ForEach(Array(photos.enumerated()), id: \.element.id) { index, photo in
+                                if let image = photo.image {
+                                    ZStack {
+                                        Image(uiImage: image)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 100, height: 130)
+                                            .clipped()
+                                            .cornerRadius(8)
+                                        
+                                        if index == currentlySelectedIndex {
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(Color.blue, lineWidth: 3)
+                                                .frame(width: 100, height: 130)
+                                        }
+                                        
+                                        // Date badge
+                                        Text(formatDate(photo.date))
+                                            .font(.system(size: 10, weight: .medium))
+                                            .padding(4)
+                                            .background(Color.black.opacity(0.7))
+                                            .cornerRadius(4)
+                                            .foregroundColor(.white)
+                                            .padding(4)
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                                    }
+                                    .onTapGesture {
+                                        onSelect(index)
+                                    }
+                                }
+                            }
+                        }
+                        .padding()
+                    }
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
+            }
+        }
+        .accentColor(.white)
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM/dd/yy"
+        return formatter.string(from: date)
     }
 }
 
@@ -173,29 +288,35 @@ struct SinglePhotoCard: View {
     let historyManager: StatsHistoryManager
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(photo.category.name)
-                    .font(.headline)
+                    .font(.title3)
+                    .fontWeight(.bold)
                     .foregroundColor(.white)
                 
                 Spacer()
                 
                 Text(formatDate(photo.date))
-                    .font(.subheadline)
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundColor(.gray)
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 10)
+            .padding(.top, 10)
             
             // Photo
             if let image = photo.image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(height: 400)
-                    .clipped()
-                    .cornerRadius(12)
-                    .padding(.horizontal)
+                GeometryReader { geometry in
+                    let availableWidth = geometry.size.width - 20
+                    
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: availableWidth)
+                        .cornerRadius(10)
+                        .padding(.horizontal, 10)
+                }
+                .frame(height: 300) // Increased height
             }
             
             // Associated measurements
@@ -203,11 +324,11 @@ struct SinglePhotoCard: View {
                 photo: photo,
                 historyManager: historyManager
             )
-            .padding()
+            .padding(10)
         }
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-        .cornerRadius(16)
-        .padding(.horizontal)
+        .cornerRadius(14)
+        .padding(.horizontal, 4)
     }
     
     private func formatDate(_ date: Date) -> String {
@@ -245,17 +366,22 @@ struct MeasurementComparisonView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Measurement Changes")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Measurements")
+                .font(.title3)
+                .fontWeight(.medium)
                 .foregroundColor(.white)
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
             
             if oldMeasurements.isEmpty && newMeasurements.isEmpty {
-                Text("No measurements associated with these photos")
-                    .font(.subheadline)
+                Text("No measurements")
+                    .font(.body)
                     .foregroundColor(.gray)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 10)
             } else {
-                VStack(spacing: 10) {
+                VStack(spacing: 4) {
                     ForEach(relevantTypes, id: \.self) { type in
                         if oldMeasurements[type] != nil || newMeasurements[type] != nil {
                             MeasurementComparisonRow(
@@ -267,10 +393,12 @@ struct MeasurementComparisonView: View {
                             if type != relevantTypes.last {
                                 Divider()
                                     .background(Color.gray.opacity(0.3))
+                                    .padding(.horizontal, 10)
                             }
                         }
                     }
                 }
+                .padding(.bottom, 10)
             }
         }
     }
@@ -296,57 +424,60 @@ struct MeasurementComparisonRow: View {
         return ((new - old) / old) * 100
     }
     
+    private var isGoodChange: Bool {
+        // For bodyFat and waist, decrease is good
+        if type == .bodyFat || type == .waist {
+            return change < 0
+        }
+        // For all others, increase is good (muscle measurements, weight for muscle gain)
+        return change > 0
+    }
+    
     var body: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text(type.title)
-                .font(.subheadline)
+                .font(.system(size: 15, weight: .medium))
                 .foregroundColor(.white)
-                .frame(width: 100, alignment: .leading)
+                .frame(width: 70, alignment: .leading)
             
             Spacer()
             
             if let old = oldValue {
                 Text(formatValue(old, type: type))
-                    .font(.subheadline)
+                    .font(.system(size: 15))
                     .foregroundColor(.gray)
             } else {
                 Text("-")
-                    .font(.subheadline)
+                    .font(.system(size: 15))
                     .foregroundColor(.gray)
             }
             
             Image(systemName: "arrow.right")
-                .font(.caption)
+                .font(.system(size: 12))
                 .foregroundColor(.gray)
             
             if let new = newValue {
                 Text(formatValue(new, type: type))
-                    .font(.subheadline)
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundColor(.white)
             } else {
                 Text("-")
-                    .font(.subheadline)
+                    .font(.system(size: 15))
                     .foregroundColor(.gray)
             }
             
             if hasChange {
-                HStack(spacing: 2) {
-                    Text(formatChange(change, type: type))
-                        .font(.caption)
-                        .foregroundColor(change < 0 ? .green : (type == .bodyFat || type == .waist) ? .green : .red)
-                    
-                    if let percent = percentChange {
-                        Text("(\(String(format: "%.1f", percent))%)")
-                            .font(.caption)
-                            .foregroundColor(change < 0 ? .green : (type == .bodyFat || type == .waist) ? .green : .red)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background((change < 0 ? Color.green : (type == .bodyFat || type == .waist) ? Color.green : Color.red).opacity(0.2))
-                .cornerRadius(4)
+                Text(formatChange(change, type: type))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(isGoodChange ? .green : .red)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(isGoodChange ? Color.green.opacity(0.2) : Color.red.opacity(0.2))
+                    .cornerRadius(6)
             }
         }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
     }
     
     private func formatValue(_ value: Double, type: StatType) -> String {
@@ -355,10 +486,10 @@ struct MeasurementComparisonRow: View {
         formatter.maximumFractionDigits = 1
         
         if let formattedValue = formatter.string(from: NSNumber(value: value)) {
-            return "\(formattedValue) \(type.unit)"
+            return "\(formattedValue)"
         }
         
-        return "\(value) \(type.unit)"
+        return "\(value)"
     }
     
     private func formatChange(_ change: Double, type: StatType) -> String {
@@ -368,10 +499,10 @@ struct MeasurementComparisonRow: View {
         formatter.positivePrefix = "+"
         
         if let formattedValue = formatter.string(from: NSNumber(value: change)) {
-            return "\(formattedValue) \(type.unit)"
+            return "\(formattedValue)"
         }
         
-        return "\(change > 0 ? "+" : "")\(change) \(type.unit)"
+        return "\(change > 0 ? "+" : "")\(change)"
     }
 }
 
@@ -379,11 +510,11 @@ struct MeasurementDetailView: View {
     let photo: ProgressPhoto
     let historyManager: StatsHistoryManager
     
-    private var measurements: [StatType: Double] {
-        var result: [StatType: Double] = [:]
+    private var measurements: [StatType: StatEntry] {
+        var result: [StatType: StatEntry] = [:]
         let entries = photo.associatedMeasurements ?? historyManager.getEntriesAt(date: photo.date)
         for entry in entries {
-            result[entry.type] = entry.value
+            result[entry.type] = entry
         }
         return result
     }
@@ -393,30 +524,40 @@ struct MeasurementDetailView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Measurements")
-                .font(.headline)
+                .font(.title3)
+                .fontWeight(.medium)
                 .foregroundColor(.white)
             
             if measurements.isEmpty {
-                Text("No measurements associated with this photo")
-                    .font(.subheadline)
+                Text("No measurements")
+                    .font(.body)
                     .foregroundColor(.gray)
+                    .padding(.bottom, 5)
             } else {
-                VStack(spacing: 10) {
+                VStack(spacing: 5) {
                     ForEach(relevantTypes, id: \.self) { type in
-                        if let value = measurements[type] {
+                        if let entry = measurements[type] {
                             HStack {
                                 Text(type.title)
-                                    .font(.subheadline)
+                                    .font(.system(size: 15, weight: .medium))
                                     .foregroundColor(.white)
                                 
                                 Spacer()
                                 
-                                Text(formatValue(value, type: type))
-                                    .font(.subheadline)
-                                    .foregroundColor(.gray)
+                                HStack(spacing: 6) {
+                                    Image(systemName: entry.source.iconName)
+                                        .font(.system(size: 13))
+                                        .foregroundColor(entry.source == .appleHealth ? .green : 
+                                                        entry.source == .automated ? .orange : .blue)
+                                    
+                                    Text(formatValue(entry.value, type: type))
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.gray)
+                                }
                             }
+                            .padding(.vertical, 4)
                             
                             if type != relevantTypes.last {
                                 Divider()
@@ -430,15 +571,18 @@ struct MeasurementDetailView: View {
             if let notes = photo.notes, !notes.isEmpty {
                 Divider()
                     .background(Color.gray.opacity(0.3))
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 6)
                 
                 Text("Notes")
-                    .font(.headline)
+                    .font(.title3)
+                    .fontWeight(.medium)
                     .foregroundColor(.white)
+                    .padding(.bottom, 4)
                 
                 Text(notes)
-                    .font(.subheadline)
+                    .font(.body)
                     .foregroundColor(.gray)
+                    .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

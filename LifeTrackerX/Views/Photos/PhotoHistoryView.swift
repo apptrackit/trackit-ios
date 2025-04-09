@@ -11,18 +11,18 @@ struct PhotoHistoryView: View {
             // Section header
             HStack {
                 Text("Photo History")
-                    .font(.headline)
+                    .font(.title3)
                     .foregroundColor(.white)
                 
                 Spacer()
                 
                 HStack(spacing: 5) {
                     Image(systemName: "photo.stack.fill")
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundColor(.gray)
                     
                     Text("\(photoManager.getPhotos(for: category).count) photos")
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundColor(.gray)
                 }
             }
@@ -34,21 +34,26 @@ struct PhotoHistoryView: View {
                 EmptyStateView(category: category)
             } else {
                 // Group by date
-                ForEach(groupedPhotos.keys.sorted(by: >), id: \.self) { date in
-                    if let photos = groupedPhotos[date] {
-                        DateGroupHeader(date: date)
-                            .padding(.horizontal)
-                        
-                        // Photos grid
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                            ForEach(photos) { photo in
-                                PhotoThumbnail(photo: photo) {
-                                    selectedPhoto = photo
+                ScrollView {
+                    VStack(spacing: 16) {
+                        ForEach(groupedPhotos.keys.sorted(by: >), id: \.self) { date in
+                            if let photos = groupedPhotos[date] {
+                                DateGroupHeader(date: date)
+                                    .padding(.horizontal)
+                                
+                                // Photos grid
+                                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                                    ForEach(photos) { photo in
+                                        PhotoThumbnail(photo: photo) {
+                                            selectedPhoto = photo
+                                        }
+                                    }
                                 }
+                                .padding(.horizontal)
                             }
                         }
-                        .padding(.horizontal)
                     }
+                    .padding(.bottom, 10)
                 }
             }
         }
@@ -68,7 +73,7 @@ struct DateGroupHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(formatDate(date))
-                .font(.subheadline)
+                .font(.headline)
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
             
@@ -105,7 +110,7 @@ struct PhotoThumbnail: View {
                 HStack {
                     if let weight = photo.associatedMeasurements?.first(where: { $0.type == .weight })?.value {
                         Text("\(String(format: "%.1f", weight)) kg")
-                            .font(.caption)
+                            .font(.subheadline)
                             .fontWeight(.semibold)
                             .foregroundColor(.white)
                             .padding(6)
