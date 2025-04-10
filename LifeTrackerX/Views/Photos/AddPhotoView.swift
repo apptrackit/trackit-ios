@@ -8,7 +8,7 @@ struct AddPhotoView: View {
     
     @State private var selectedItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
-    @State private var selectedCategory: PhotoCategory = .front
+    @State private var selectedCategories: Set<PhotoCategory> = []
     @State private var selectedDate = Date()
     @State private var notes = ""
     @State private var loadingImage = false
@@ -74,23 +74,23 @@ struct AddPhotoView: View {
                         
                         // Category selector
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("Category")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 15) {
-                                    ForEach(PhotoCategory.allCases) { category in
-                                        CategorySelectorButton(
-                                            category: category,
-                                            isSelected: selectedCategory == category,
-                                            action: {
-                                                selectedCategory = category
-                                            }
-                                        )
-                                    }
+                            HStack {
+                                Text("Categories")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                
+                                Spacer()
+                                
+                                if !selectedCategories.isEmpty {
+                                    Text("\(selectedCategories.count) selected")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
                                 }
                             }
+                            
+                            MultiCategorySelector(
+                                selectedCategories: $selectedCategories
+                            )
                         }
                         .padding(.horizontal)
                         
@@ -159,13 +159,13 @@ struct AddPhotoView: View {
                             .foregroundColor(.blue)
                             .fontWeight(.semibold)
                     }
-                    .disabled(selectedImage == nil)
-                    .opacity(selectedImage == nil ? 0.5 : 1.0)
+                    .disabled(selectedImage == nil || selectedCategories.isEmpty)
+                    .opacity((selectedImage == nil || selectedCategories.isEmpty) ? 0.5 : 1.0)
                 }
             }
             .onAppear {
                 if let category = category {
-                    selectedCategory = category
+                    selectedCategories.insert(category)
                 }
             }
         }
@@ -190,12 +190,16 @@ struct AddPhotoView: View {
             return
         }
         
+        guard !selectedCategories.isEmpty else {
+            return
+        }
+        
         // Get measurements close to this date to associate with photo
         let measurements = photoManager.getMeasurementsAtTime(date: selectedDate, statsManager: historyManager)
         
         let photo = ProgressPhoto(
             date: selectedDate,
-            category: selectedCategory,
+            categories: Array(selectedCategories),
             imageData: imageData,
             associatedMeasurements: measurements,
             notes: notes.isEmpty ? nil : notes
@@ -214,7 +218,7 @@ struct EditPhotoView: View {
     
     @State private var selectedItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
-    @State private var selectedCategory: PhotoCategory
+    @State private var selectedCategories: Set<PhotoCategory>
     @State private var selectedDate: Date
     @State private var notes: String
     @State private var loadingImage = false
@@ -227,7 +231,7 @@ struct EditPhotoView: View {
         self.historyManager = historyManager
         self.onSave = onSave
         
-        _selectedCategory = State(initialValue: photo.category)
+        _selectedCategories = State(initialValue: Set(photo.categories))
         _selectedDate = State(initialValue: photo.date)
         _notes = State(initialValue: photo.notes ?? "")
         _selectedImage = State(initialValue: photo.image)
@@ -292,23 +296,23 @@ struct EditPhotoView: View {
                         
                         // Category selector
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("Category")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 15) {
-                                    ForEach(PhotoCategory.allCases) { category in
-                                        CategorySelectorButton(
-                                            category: category,
-                                            isSelected: selectedCategory == category,
-                                            action: {
-                                                selectedCategory = category
-                                            }
-                                        )
-                                    }
+                            HStack {
+                                Text("Categories")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                
+                                Spacer()
+                                
+                                if !selectedCategories.isEmpty {
+                                    Text("\(selectedCategories.count) selected")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
                                 }
                             }
+                            
+                            MultiCategorySelector(
+                                selectedCategories: $selectedCategories
+                            )
                         }
                         .padding(.horizontal)
                         
@@ -377,8 +381,8 @@ struct EditPhotoView: View {
                             .foregroundColor(.blue)
                             .fontWeight(.semibold)
                     }
-                    .disabled(selectedImage == nil)
-                    .opacity(selectedImage == nil ? 0.5 : 1.0)
+                    .disabled(selectedImage == nil || selectedCategories.isEmpty)
+                    .opacity((selectedImage == nil || selectedCategories.isEmpty) ? 0.5 : 1.0)
                 }
             }
         }
@@ -400,6 +404,7 @@ struct EditPhotoView: View {
     
     private func updatePhoto() {
         guard let selectedImage = selectedImage else { return }
+        guard !selectedCategories.isEmpty else { return }
         
         var imageData = photo.imageData
         
@@ -416,7 +421,7 @@ struct EditPhotoView: View {
         let updatedPhoto = ProgressPhoto(
             id: photo.id,
             date: selectedDate,
-            category: selectedCategory,
+            categories: Array(selectedCategories),
             imageData: imageData,
             associatedMeasurements: measurements,
             notes: notes.isEmpty ? nil : notes
@@ -425,6 +430,64 @@ struct EditPhotoView: View {
         photoManager.updatePhoto(photo: updatedPhoto)
         onSave()
         dismiss()
+    }
+}
+
+struct MultiCategorySelector: View {
+    @Binding var selectedCategories: Set<PhotoCategory>
+    
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 15) {
+                ForEach(PhotoCategory.allCases) { category in
+                    MultipleCategorySelectorButton(
+                        category: category,
+                        isSelected: selectedCategories.contains(category),
+                        action: {
+                            if selectedCategories.contains(category) {
+                                selectedCategories.remove(category)
+                            } else {
+                                selectedCategories.insert(category)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+struct MultipleCategorySelectorButton: View {
+    let category: PhotoCategory
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? Color.blue : Color(red: 0.2, green: 0.2, blue: 0.2))
+                        .frame(width: 60, height: 60)
+                    
+                    Image(systemName: category.iconName)
+                        .font(.system(size: 24))
+                        .foregroundColor(.white)
+                    
+                    if isSelected {
+                        Circle()
+                            .stroke(Color.white, lineWidth: 2)
+                            .frame(width: 60, height: 60)
+                    }
+                }
+                
+                Text(category.name)
+                    .font(.caption)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(width: 70)
     }
 }
 

@@ -211,6 +211,19 @@ struct ComparisonCard: View {
     }
 }
 
+struct CategoryBadge: View {
+    let category: PhotoCategory
+    
+    var body: some View {
+        Image(systemName: category.iconName)
+            .font(.system(size: 12))
+            .foregroundColor(.white)
+            .padding(6)
+            .background(Color.black.opacity(0.6))
+            .cornerRadius(4)
+    }
+}
+
 struct PhotoSelectorView: View {
     let photos: [ProgressPhoto]
     let onSelect: (Int) -> Void
@@ -223,43 +236,89 @@ struct PhotoSelectorView: View {
             ZStack {
                 Color.black.edgesIgnoringSafeArea(.all)
                 
-                VStack {
-                    // Photo grid
+                VStack(spacing: 12) {
+                    // Photo grid organized by date
                     ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
-                            ForEach(Array(photos.enumerated()), id: \.element.id) { index, photo in
-                                if let image = photo.image {
-                                    ZStack {
-                                        Image(uiImage: image)
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: 100, height: 130)
-                                            .clipped()
-                                            .cornerRadius(8)
+                        // Group photos by month
+                        let groupedByMonth = Dictionary(grouping: photos.sorted(by: { $0.date > $1.date })) { photo in
+                            formatMonth(photo.date)
+                        }
+                        
+                        ForEach(groupedByMonth.keys.sorted(by: <), id: \.self) { month in
+                            if let monthPhotos = groupedByMonth[month] {
+                                // Month header
+                                HStack {
+                                    Text(month)
+                                        .font(.system(size: 16, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.leading)
+                                        .padding(.top, 8)
+                                    
+                                    Spacer()
+                                }
+                                
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
+                                    ForEach(monthPhotos, id: \.id) { photo in
+                                        let index = photos.firstIndex(where: { $0.id == photo.id }) ?? 0
                                         
-                                        if index == currentlySelectedIndex {
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .stroke(Color.blue, lineWidth: 3)
-                                                .frame(width: 100, height: 130)
+                                        if let image = photo.image {
+                                            ZStack {
+                                                Image(uiImage: image)
+                                                    .resizable()
+                                                    .aspectRatio(contentMode: .fill)
+                                                    .frame(width: 100, height: 130)
+                                                    .clipped()
+                                                    .cornerRadius(8)
+                                                
+                                                // Selection indicator
+                                                if index == currentlySelectedIndex {
+                                                    RoundedRectangle(cornerRadius: 8)
+                                                        .stroke(Color.blue, lineWidth: 3)
+                                                        .frame(width: 100, height: 130)
+                                                }
+                                                
+                                                VStack {
+                                                    // Date badge
+                                                    HStack {
+                                                        Text(formatDate(photo.date))
+                                                            .font(.system(size: 10, weight: .medium))
+                                                            .padding(4)
+                                                            .background(Color.black.opacity(0.7))
+                                                            .cornerRadius(4)
+                                                            .foregroundColor(.white)
+                                                        
+                                                        Spacer()
+                                                        
+                                                        // Age indicator
+                                                        if let days = daysSinceDate(photo.date) {
+                                                            Text(formatAge(days))
+                                                                .font(.system(size: 10, weight: .medium))
+                                                                .padding(4)
+                                                                .background(Color.blue.opacity(0.7))
+                                                                .cornerRadius(4)
+                                                                .foregroundColor(.white)
+                                                        }
+                                                    }
+                                                    
+                                                    Spacer()
+                                                    
+                                                    // Removed category icons display
+                                                }
+                                                .padding(4)
+                                            }
+                                            .onTapGesture {
+                                                onSelect(index)
+                                            }
                                         }
-                                        
-                                        // Date badge
-                                        Text(formatDate(photo.date))
-                                            .font(.system(size: 10, weight: .medium))
-                                            .padding(4)
-                                            .background(Color.black.opacity(0.7))
-                                            .cornerRadius(4)
-                                            .foregroundColor(.white)
-                                            .padding(4)
-                                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                                    }
-                                    .onTapGesture {
-                                        onSelect(index)
                                     }
                                 }
+                                .padding(.horizontal)
                             }
                         }
-                        .padding()
+                        
+                        // Bottom padding
+                        Color.clear.frame(height: 20)
                     }
                 }
             }
@@ -281,6 +340,37 @@ struct PhotoSelectorView: View {
         formatter.dateFormat = "MM/dd/yy"
         return formatter.string(from: date)
     }
+    
+    private func formatMonth(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: date)
+    }
+    
+    private func daysSinceDate(_ date: Date) -> Int? {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.day], from: date, to: Date())
+        return components.day
+    }
+    
+    private func formatAge(_ days: Int) -> String {
+        if days == 0 {
+            return "Today"
+        } else if days == 1 {
+            return "1 day"
+        } else if days < 7 {
+            return "\(days) days"
+        } else if days < 30 {
+            let weeks = days / 7
+            return "\(weeks)w"
+        } else if days < 365 {
+            let months = days / 30
+            return "\(months)m"
+        } else {
+            let years = days / 365
+            return "\(years)y"
+        }
+    }
 }
 
 struct SinglePhotoCard: View {
@@ -290,10 +380,16 @@ struct SinglePhotoCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(photo.category.name)
+                Text(photo.primaryCategory.name)
                     .font(.title3)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
+                
+                if photo.categories.count > 1 {
+                    Text("+\(photo.categories.count - 1)")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.gray)
+                }
                 
                 Spacer()
                 
@@ -303,6 +399,19 @@ struct SinglePhotoCard: View {
             }
             .padding(.horizontal, 10)
             .padding(.top, 10)
+            
+            // Category tags if multiple categories
+            if photo.categories.count > 1 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(photo.categories, id: \.self) { category in
+                            CategoryBadge(category: category)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 5)
+                }
+            }
             
             // Photo
             if let image = photo.image {

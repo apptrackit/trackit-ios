@@ -38,13 +38,13 @@ struct PhotoHistoryView: View {
                     VStack(spacing: 16) {
                         ForEach(groupedPhotos.keys.sorted(by: >), id: \.self) { date in
                             if let photos = groupedPhotos[date] {
-                                DateGroupHeader(date: date)
+                                HistoryDateGroupHeader(date: date)
                                     .padding(.horizontal)
                                 
                                 // Photos grid
                                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                                     ForEach(photos) { photo in
-                                        PhotoThumbnail(photo: photo) {
+                                        HistoryPhotoThumbnail(photo: photo) {
                                             selectedPhoto = photo
                                         }
                                     }
@@ -67,7 +67,7 @@ struct PhotoHistoryView: View {
     }
 }
 
-struct DateGroupHeader: View {
+struct HistoryDateGroupHeader: View {
     let date: Date
     
     var body: some View {
@@ -90,7 +90,7 @@ struct DateGroupHeader: View {
     }
 }
 
-struct PhotoThumbnail: View {
+struct HistoryPhotoThumbnail: View {
     let photo: ProgressPhoto
     let action: () -> Void
     
@@ -107,7 +107,28 @@ struct PhotoThumbnail: View {
                 }
                 
                 // Metadata overlay
-                HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    // Category badges
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            ForEach(photo.categories, id: \.self) { category in
+                                HStack(spacing: 2) {
+                                    Image(systemName: category.iconName)
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.white)
+                                    
+                                    Text(category.name)
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.white)
+                                }
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .background(Color.black.opacity(0.7))
+                                .cornerRadius(4)
+                            }
+                        }
+                    }
+                    
                     if let weight = photo.associatedMeasurements?.first(where: { $0.type == .weight })?.value {
                         Text("\(String(format: "%.1f", weight)) kg")
                             .font(.subheadline)
@@ -150,24 +171,31 @@ struct PhotoDetailView: View {
                                 .padding(.horizontal)
                         }
                         
-                        // Date and category
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(formatDate(photo.date))
-                                    .font(.title3)
-                                    .foregroundColor(.white)
-                                
-                                HStack {
-                                    Image(systemName: photo.category.iconName)
-                                        .foregroundColor(.blue)
-                                    
-                                    Text(photo.category.name)
-                                        .font(.subheadline)
-                                        .foregroundColor(.gray)
+                        // Date and categories
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(formatDate(photo.date))
+                                .font(.title3)
+                                .foregroundColor(.white)
+                            
+                            // Category badges
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(photo.categories, id: \.self) { category in
+                                        HStack(spacing: 4) {
+                                            Image(systemName: category.iconName)
+                                                .foregroundColor(.blue)
+                                            
+                                            Text(category.name)
+                                                .font(.subheadline)
+                                                .foregroundColor(.gray)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+                                        .cornerRadius(8)
+                                    }
                                 }
                             }
-                            
-                            Spacer()
                         }
                         .padding(.horizontal)
                         

@@ -126,13 +126,13 @@ struct ProgressPhotosView: View {
                             VStack(spacing: 16) {
                                 ForEach(groupedPhotos.keys.sorted(by: >), id: \.self) { date in
                                     if let photos = groupedPhotos[date] {
-                                        DateGroupHeader(date: date)
+                                        HistoryDateGroupHeader(date: date)
                                             .padding(.horizontal)
                                         
                                         // Photos grid
                                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                                             ForEach(photos) { photo in
-                                                PhotoThumbnail(photo: photo) {
+                                                HistoryPhotoThumbnail(photo: photo) {
                                                     selectedPhoto = photo
                                                 }
                                             }
@@ -255,6 +255,40 @@ struct CategoryPhotoCard: View {
                         Text(category.name)
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(.white)
+                        
+                        if photo.categories.count > 1 {
+                            Text("+\(photo.categories.count - 1)")
+                                .font(.system(size: 12))
+                                .foregroundColor(.gray)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .background(Color.black.opacity(0.5))
+                                .cornerRadius(4)
+                        }
+                    }
+                    
+                    // Additional categories list
+                    if photo.categories.count > 1 {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 4) {
+                                ForEach(photo.categories.filter { $0 != category }, id: \.self) { cat in
+                                    HStack(spacing: 2) {
+                                        Image(systemName: cat.iconName)
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.white)
+                                        
+                                        Text(cat.name)
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.white)
+                                    }
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .background(Color.black.opacity(0.5))
+                                    .cornerRadius(4)
+                                }
+                            }
+                        }
+                        .padding(.bottom, 2)
                     }
                     
                     Text(formatDate(photo.date))
