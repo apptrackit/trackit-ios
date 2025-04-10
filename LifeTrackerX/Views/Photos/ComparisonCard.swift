@@ -1016,11 +1016,6 @@ struct MeasurementDetailView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Measurements")
-                .font(.title3)
-                .fontWeight(.medium)
-                .foregroundColor(.white)
-            
             if measurements.isEmpty {
                 Text("No measurements")
                     .font(.body)
