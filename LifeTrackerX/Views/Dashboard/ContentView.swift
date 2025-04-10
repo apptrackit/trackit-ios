@@ -29,54 +29,52 @@ struct ContentView: View {
     }
     
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.black.edgesIgnoringSafeArea(.all)
+        ZStack {
+            Color.black.edgesIgnoringSafeArea(.all)
+            
+            ScrollView {
+                RefreshControl(isRefreshing: $isRefreshing) {
+                    refreshData()
+                }
                 
-                ScrollView {
-                    RefreshControl(isRefreshing: $isRefreshing) {
-                        refreshData()
-                    }
+                VStack(spacing: 20) {
+                    GridView(weight: weight, height: height, bmi: bmi, bodyFat: bodyFat, historyManager: historyManager)
+                        .padding(.top,-40)
                     
-                    VStack(spacing: 20) {
-                        GridView(weight: weight, height: height, bmi: bmi, bodyFat: bodyFat, historyManager: historyManager)
-                            .padding(.top,-40)
-                        
-                        Spacer()
-                    }
+                    Spacer()
                 }
             }
-            .navigationTitle("Dashboard")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showingAddEntrySheet = true
-                    }) {
-                        Image(systemName: "plus")
-                    }
-                }
-                
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        showingSettingsSheet = true
-                    }) {
-                        Image(systemName: "gear")
-                    }
+        }
+        .navigationTitle("Dashboard")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    showingAddEntrySheet = true
+                }) {
+                    Image(systemName: "plus")
                 }
             }
-            .sheet(isPresented: $showingAddEntrySheet) {
-                TrackDataView(historyManager: historyManager)
+            
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    showingSettingsSheet = true
+                }) {
+                    Image(systemName: "gear")
+                }
             }
-            .sheet(isPresented: $showingSettingsSheet) {
-                SettingsView(historyManager: historyManager)
-            }
-            .onAppear {
-                // Sync with Apple Health when the app launches
-                if healthManager.isAuthorized {
-                    healthManager.importAllHealthData(historyManager: historyManager) { _ in
-                        print("Initial sync completed on app launch")
-                    }
+        }
+        .sheet(isPresented: $showingAddEntrySheet) {
+            TrackDataView(historyManager: historyManager)
+        }
+        .sheet(isPresented: $showingSettingsSheet) {
+            SettingsView(historyManager: historyManager)
+        }
+        .onAppear {
+            // Sync with Apple Health when the app launches
+            if healthManager.isAuthorized {
+                healthManager.importAllHealthData(historyManager: historyManager) { _ in
+                    print("Initial sync completed on app launch")
                 }
             }
         }
