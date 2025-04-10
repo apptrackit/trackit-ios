@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 
 enum PhotoCategory: String, CaseIterable, Identifiable, Codable {
+    case all
     case front, side, back
     case arms, chest, legs, shoulders, abs
     case other
@@ -10,6 +11,7 @@ enum PhotoCategory: String, CaseIterable, Identifiable, Codable {
     
     var name: String {
         switch self {
+        case .all: return "All Photos"
         case .front: return "Front"
         case .side: return "Side"
         case .back: return "Back"
@@ -24,11 +26,12 @@ enum PhotoCategory: String, CaseIterable, Identifiable, Codable {
     
     var iconName: String {
         switch self {
+        case .all: return "photo.on.rectangle.angled"
         case .front: return "person.fill"
         case .side: return "person.fill.turn.right"
         case .back: return "person.fill.turn.down"
         case .arms: return "figure.arms.open"
-        case .chest: return "heart.fill"
+        case .chest: return "cherry"
         case .legs: return "figure.walk"
         case .shoulders: return "figure.american.football"
         case .abs: return "figure.core.training"

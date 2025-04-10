@@ -233,6 +233,44 @@ struct PhotoSelectorView: View {
     let currentlySelectedIndex: Int
     let title: String
     @Environment(\.presentationMode) var presentationMode
+    @State private var sortOption: PhotoSortOption = .date
+    
+    enum PhotoSortOption: String, CaseIterable {
+        case date = "Date"
+        case weight = "Weight"
+        case bodyFat = "Body Fat"
+        case bicep = "Bicep"
+        case chest = "Chest"
+        case shoulder = "Shoulder"
+        case waist = "Waist"
+        case thigh = "Thigh"
+        
+        var iconName: String {
+            switch self {
+            case .date: return "calendar"
+            case .weight: return "scalemass"
+            case .bodyFat: return "percent"
+            case .bicep: return "figure.arms.open"
+            case .chest: return "cherry"
+            case .shoulder: return "figure.american.football"
+            case .waist: return "circle.dashed"
+            case .thigh: return "figure.walk"
+            }
+        }
+        
+        var statType: StatType {
+            switch self {
+            case .date: return .weight // Default, not used
+            case .weight: return .weight
+            case .bodyFat: return .bodyFat
+            case .bicep: return .bicep
+            case .chest: return .chest
+            case .shoulder: return .shoulder
+            case .waist: return .waist
+            case .thigh: return .thigh
+            }
+        }
+    }
     
     var body: some View {
         NavigationView {
@@ -240,83 +278,50 @@ struct PhotoSelectorView: View {
                 Color.black.edgesIgnoringSafeArea(.all)
                 
                 VStack(spacing: 12) {
-                    // Photo grid organized by date
-                    ScrollView {
-                        // Group photos by month
-                        let groupedByMonth = Dictionary(grouping: photos.sorted(by: { $0.date > $1.date })) { photo in
-                            formatMonth(photo.date)
-                        }
-                        
-                        ForEach(groupedByMonth.keys.sorted(by: <), id: \.self) { month in
-                            if let monthPhotos = groupedByMonth[month] {
-                                // Month header
-                                HStack {
-                                    Text(month)
-                                        .font(.system(size: 16, weight: .bold))
-                                        .foregroundColor(.white)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.leading)
-                                        .padding(.top, 8)
-                                    
-                                    Spacer()
-                                }
-                                
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
-                                    ForEach(monthPhotos, id: \.id) { photo in
-                                        let index = photos.firstIndex(where: { $0.id == photo.id }) ?? 0
-                                        
-                                        if let image = photo.image {
-                                            ZStack {
-                                                Image(uiImage: image)
-                                                    .resizable()
-                                                    .aspectRatio(contentMode: .fill)
-                                                    .frame(width: 100, height: 130)
-                                                    .clipped()
-                                                    .cornerRadius(8)
-                                                
-                                                // Selection indicator
-                                                if index == currentlySelectedIndex {
-                                                    RoundedRectangle(cornerRadius: 8)
-                                                        .stroke(Color.blue, lineWidth: 3)
-                                                        .frame(width: 100, height: 130)
-                                                }
-                                                
-                                                VStack {
-                                                    // Date badge
-                                                    HStack {
-                                                        Text(formatDate(photo.date))
-                                                            .font(.system(size: 10, weight: .medium))
-                                                            .padding(4)
-                                                            .background(Color.black.opacity(0.7))
-                                                            .cornerRadius(4)
-                                                            .foregroundColor(.white)
-                                                        
-                                                        Spacer()
-                                                        
-                                                        // Age indicator
-                                                        if let days = daysSinceDate(photo.date) {
-                                                            Text(formatAge(days))
-                                                                .font(.system(size: 10, weight: .medium))
-                                                                .padding(4)
-                                                                .background(Color.blue.opacity(0.7))
-                                                                .cornerRadius(4)
-                                                                .foregroundColor(.white)
-                                                        }
-                                                    }
-                                                    
-                                                    Spacer()
-                                                    
-                                                    // Removed category icons display
-                                                }
-                                                .padding(4)
-                                            }
-                                            .onTapGesture {
-                                                onSelect(index)
-                                            }
-                                        }
+                    // Sort options
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(PhotoSortOption.allCases, id: \.self) { option in
+                                Button(action: {
+                                    sortOption = option
+                                }) {
+                                    HStack {
+                                        Image(systemName: option.iconName)
+                                            .font(.system(size: 12))
+                                        Text(option.rawValue)
+                                            .font(.system(size: 14, weight: .medium))
                                     }
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 10)
+                                    .background(sortOption == option ? Color.blue : Color(red: 0.2, green: 0.2, blue: 0.2))
+                                    .cornerRadius(8)
+                                    .foregroundColor(.white)
                                 }
-                                .padding(.horizontal)
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                    }
+                    
+                    // Photo grid organized by selected sort option
+                    ScrollView {
+                        // Use different grouping methods based on the sort option
+                        Group {
+                            if sortOption == .date {
+                                // Date sorting (existing implementation)
+                                DateSortedPhotosView(
+                                    photos: photos,
+                                    currentlySelectedIndex: currentlySelectedIndex,
+                                    onSelect: onSelect
+                                )
+                            } else {
+                                // All measurement-based sorting uses the same view with different stat types
+                                MeasurementSortedPhotosView(
+                                    photos: photos,
+                                    statType: sortOption.statType,
+                                    currentlySelectedIndex: currentlySelectedIndex,
+                                    onSelect: onSelect
+                                )
                             }
                         }
                         
@@ -373,6 +378,332 @@ struct PhotoSelectorView: View {
             let years = days / 365
             return "\(years)y"
         }
+    }
+}
+
+// View for photos sorted by date
+struct DateSortedPhotosView: View {
+    let photos: [ProgressPhoto]
+    let currentlySelectedIndex: Int
+    let onSelect: (Int) -> Void
+    
+    var body: some View {
+        // Group photos by month
+        let groupedByMonth = Dictionary(grouping: photos.sorted(by: { $0.date > $1.date })) { photo in
+            formatMonth(photo.date)
+        }
+        
+        ForEach(groupedByMonth.keys.sorted(by: <), id: \.self) { month in
+            if let monthPhotos = groupedByMonth[month] {
+                // Month header
+                HStack {
+                    Text(month)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading)
+                        .padding(.top, 8)
+                    
+                    Spacer()
+                }
+                
+                PhotoGrid(
+                    photos: monthPhotos,
+                    allPhotos: photos,
+                    currentlySelectedIndex: currentlySelectedIndex,
+                    onSelect: onSelect
+                )
+            }
+        }
+    }
+    
+    private func formatMonth(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: date)
+    }
+}
+
+// View for photos sorted by measurement values
+struct MeasurementSortedPhotosView: View {
+    let photos: [ProgressPhoto]
+    let statType: StatType
+    let currentlySelectedIndex: Int
+    let onSelect: (Int) -> Void
+    
+    // Get the associated measurement for each photo
+    private var photosWithMeasurements: [(photo: ProgressPhoto, value: Double?)] {
+        return photos.map { photo in
+            // Find the measurement of the specified type
+            let value = photo.associatedMeasurements?
+                .first(where: { $0.type == statType })?.value
+            return (photo, value)
+        }
+    }
+    
+    // Group photos by measurement range
+    private var groupedPhotos: [(range: String, photos: [ProgressPhoto])] {
+        // Filter out photos without the measurement
+        let validPhotos = photosWithMeasurements.filter { $0.value != nil }
+        
+        // If no valid photos, return empty array
+        if validPhotos.isEmpty {
+            return []
+        }
+        
+        // Sort by measurement value
+        let sortedPhotos = validPhotos.sorted { a, b in
+            guard let aValue = a.value, let bValue = b.value else {
+                return false
+            }
+            return aValue > bValue // Higher values first
+        }
+        
+        // Find ranges for grouping
+        let allValues = sortedPhotos.compactMap { $0.value }
+        if allValues.isEmpty {
+            return []
+        }
+        
+        // Get min and max values for range calculation
+        let maxValue = allValues.max() ?? 0
+        let minValue = allValues.min() ?? 0
+        let range = maxValue - minValue
+        
+        // If all values are the same, use a single group
+        if range < 0.1 {
+            return [("All \(statType.title)", sortedPhotos.map { $0.photo })]
+        }
+        
+        // Determine range increments based on the data spread
+        let increment: Double
+        if statType == .weight {
+            increment = 5.0 // 5kg/10lb increments for weight
+        } else if statType == .bodyFat {
+            increment = 2.0 // 2% increments for body fat
+        } else {
+            increment = max(1.0, range / 4) // Divide into ~4 groups for other measurements
+        }
+        
+        // Create range groups
+        var groups: [String: [ProgressPhoto]] = [:]
+        
+        for (photo, value) in sortedPhotos {
+            guard let value = value else { continue }
+            
+            // Calculate the range this value belongs to
+            let rangeStart = floor(value / increment) * increment
+            let rangeEnd = rangeStart + increment
+            
+            // Format the range label
+            let rangeLabel = "\(formatValue(rangeStart))-\(formatValue(rangeEnd)) \(statType.unit)"
+            
+            // Add photo to the appropriate range group
+            if groups[rangeLabel] == nil {
+                groups[rangeLabel] = []
+            }
+            groups[rangeLabel]?.append(photo)
+        }
+        
+        // Convert to array and sort by range value (descending)
+        return groups.map { (range, photos) in
+            (range, photos)
+        }
+        .sorted { a, b in
+            // Extract the starting range value for sorting
+            let aValue = Double(a.range.split(separator: "-").first?.trimmingCharacters(in: .whitespaces) ?? "0") ?? 0
+            let bValue = Double(b.range.split(separator: "-").first?.trimmingCharacters(in: .whitespaces) ?? "0") ?? 0
+            return aValue > bValue
+        }
+    }
+    
+    var body: some View {
+        if groupedPhotos.isEmpty {
+            VStack {
+                Text("No photos with \(statType.title) data")
+                    .font(.system(size: 16))
+                    .foregroundColor(.gray)
+                    .padding()
+                
+                // Show all photos without grouping
+                Text("All Photos")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading)
+                    .padding(.top, 8)
+                
+                PhotoGrid(
+                    photos: photos,
+                    allPhotos: photos,
+                    currentlySelectedIndex: currentlySelectedIndex,
+                    onSelect: onSelect
+                )
+            }
+        } else {
+            ForEach(groupedPhotos, id: \.range) { group in
+                // Range header
+                HStack {
+                    Text(group.range)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading)
+                        .padding(.top, 8)
+                    
+                    Spacer()
+                }
+                
+                PhotoGrid(
+                    photos: group.photos,
+                    allPhotos: photos,
+                    currentlySelectedIndex: currentlySelectedIndex,
+                    onSelect: onSelect
+                )
+            }
+        }
+    }
+    
+    private func formatValue(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 1
+        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+}
+
+// Reusable photo grid component
+struct PhotoGrid: View {
+    let photos: [ProgressPhoto]
+    let allPhotos: [ProgressPhoto] // The complete photo array for finding index
+    let currentlySelectedIndex: Int
+    let onSelect: (Int) -> Void
+    
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
+            ForEach(photos, id: \.id) { photo in
+                let index = allPhotos.firstIndex(where: { $0.id == photo.id }) ?? 0
+                
+                if let image = photo.image {
+                    ZStack {
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 100, height: 130)
+                            .clipped()
+                            .cornerRadius(8)
+                        
+                        // Selection indicator
+                        if index == currentlySelectedIndex {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.blue, lineWidth: 3)
+                                .frame(width: 100, height: 130)
+                        }
+                        
+                        VStack {
+                            // Date badge
+                            HStack {
+                                Text(formatDate(photo.date))
+                                    .font(.system(size: 10, weight: .medium))
+                                    .padding(4)
+                                    .background(Color.black.opacity(0.7))
+                                    .cornerRadius(4)
+                                    .foregroundColor(.white)
+                                
+                                Spacer()
+                                
+                                // Age indicator
+                                if let days = daysSinceDate(photo.date) {
+                                    Text(formatAge(days))
+                                        .font(.system(size: 10, weight: .medium))
+                                        .padding(4)
+                                        .background(Color.blue.opacity(0.7))
+                                        .cornerRadius(4)
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            // Measurement badge if available
+                            if let measurements = photo.associatedMeasurements, !measurements.isEmpty {
+                                HStack {
+                                    Spacer()
+                                    ForEach(getSummaryMeasurements(for: photo), id: \.type) { measurement in
+                                        Text("\(measurement.type.title): \(formatValue(measurement.value, type: measurement.type))")
+                                            .font(.system(size: 9, weight: .medium))
+                                            .padding(4)
+                                            .background(Color.gray.opacity(0.7))
+                                            .cornerRadius(4)
+                                            .foregroundColor(.white)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(4)
+                    }
+                    .onTapGesture {
+                        onSelect(index)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal)
+    }
+    
+    // Helper to get key measurements for display
+    private func getSummaryMeasurements(for photo: ProgressPhoto) -> [StatEntry] {
+        guard let measurements = photo.associatedMeasurements else { return [] }
+        
+        // Priority order for measurements to show
+        let priorityTypes: [StatType] = [.weight, .bodyFat, .chest, .waist]
+        
+        // Return up to 2 measurements based on priority
+        return priorityTypes.compactMap { type in
+            measurements.first { $0.type == type }
+        }.prefix(2).map { $0 }
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM/dd/yy"
+        return formatter.string(from: date)
+    }
+    
+    private func daysSinceDate(_ date: Date) -> Int? {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.day], from: date, to: Date())
+        return components.day
+    }
+    
+    private func formatAge(_ days: Int) -> String {
+        if days == 0 {
+            return "Today"
+        } else if days == 1 {
+            return "1 day"
+        } else if days < 7 {
+            return "\(days) days"
+        } else if days < 30 {
+            let weeks = days / 7
+            return "\(weeks)w"
+        } else if days < 365 {
+            let months = days / 30
+            return "\(months)m"
+        } else {
+            let years = days / 365
+            return "\(years)y"
+        }
+    }
+    
+    private func formatValue(_ value: Double, type: StatType) -> String {
+        let formatter = NumberFormatter()
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 1
+        
+        if let formattedValue = formatter.string(from: NSNumber(value: value)) {
+            return formattedValue
+        }
+        return "\(value)"
     }
 }
 

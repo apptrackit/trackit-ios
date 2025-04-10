@@ -33,6 +33,9 @@ class ProgressPhotoManager: ObservableObject {
     
     func getPhotos(for category: PhotoCategory? = nil) -> [ProgressPhoto] {
         if let category = category {
+            if category == .all {
+                return photos.sorted(by: { $0.date > $1.date })
+            }
             return photos.filter { $0.categories.contains(category) }.sorted(by: { $0.date > $1.date })
         } else {
             return photos.sorted(by: { $0.date > $1.date })
@@ -52,7 +55,12 @@ class ProgressPhotoManager: ObservableObject {
         var result: [PhotoCategory: ProgressPhoto] = [:]
         
         for category in PhotoCategory.allCases {
-            if let latestPhoto = photos
+            if category == .all {
+                // For .all category, get the latest photo overall
+                if let latestPhoto = photos.sorted(by: { $0.date > $1.date }).first {
+                    result[category] = latestPhoto
+                }
+            } else if let latestPhoto = photos
                 .filter({ $0.categories.contains(category) })
                 .sorted(by: { $0.date > $1.date })
                 .first {
@@ -65,9 +73,15 @@ class ProgressPhotoManager: ObservableObject {
     
     // Get the most recent and second most recent photos for a category
     func getComparisonPhotos(for category: PhotoCategory) -> (latest: ProgressPhoto?, previous: ProgressPhoto?) {
-        let categoryPhotos = photos
-            .filter { $0.categories.contains(category) }
-            .sorted(by: { $0.date > $1.date })
+        let categoryPhotos: [ProgressPhoto]
+        
+        if category == .all {
+            categoryPhotos = photos.sorted(by: { $0.date > $1.date })
+        } else {
+            categoryPhotos = photos
+                .filter { $0.categories.contains(category) }
+                .sorted(by: { $0.date > $1.date })
+        }
         
         if categoryPhotos.isEmpty {
             return (nil, nil)
