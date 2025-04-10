@@ -22,32 +22,31 @@ struct ComparisonCard: View {
         categoryPhotos.indices.contains(rightPhotoIndex) ? categoryPhotos[rightPhotoIndex] : nil
     }
     
+    // Need to add these computed properties to access weight measurements
+    private var oldMeasurements: [StatType: Double] {
+        var result: [StatType: Double] = [:]
+        if let leftPhoto = leftPhoto {
+            let measurements = leftPhoto.associatedMeasurements ?? historyManager.getEntriesAt(date: leftPhoto.date)
+            for measurement in measurements {
+                result[measurement.type] = measurement.value
+            }
+        }
+        return result
+    }
+    
+    private var newMeasurements: [StatType: Double] {
+        var result: [StatType: Double] = [:]
+        if let rightPhoto = rightPhoto {
+            let measurements = rightPhoto.associatedMeasurements ?? historyManager.getEntriesAt(date: rightPhoto.date)
+            for measurement in measurements {
+                result[measurement.type] = measurement.value
+            }
+        }
+        return result
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Header
-            HStack {
-                Text("Comparison")
-                    .font(.title3)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-                
-                Spacer()
-                
-                if let leftPhoto = leftPhoto, let rightPhoto = rightPhoto {
-                    // Time difference
-                    HStack(spacing: 4) {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 14))
-                            .foregroundColor(.gray)
-                        
-                        Text(formatTimeDifference(from: leftPhoto.date, to: rightPhoto.date))
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.gray)
-                    }
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.top, 10)
             
             // Photo comparison
             GeometryReader { geometry in
@@ -58,6 +57,16 @@ struct ComparisonCard: View {
                 HStack(spacing: 8) {
                     // Left photo with date and controls
                     VStack(spacing: 4) {
+                        // Date on top
+                        if let photo = leftPhoto {
+                            Text(formatDate(photo.date))
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                                .padding(.bottom, 2)
+                                .padding(.top, 8)
+                        }
+                        
                         if let photo = leftPhoto, let image = photo.image {
                             ZStack(alignment: .topLeading) {
                                 Image(uiImage: image)
@@ -79,6 +88,15 @@ struct ComparisonCard: View {
                                 isSelectingLeftPhoto = true
                                 showingPhotoSelector = true
                             }
+                            
+                            // Weight on bottom
+                            if let weightValue = oldMeasurements[.weight] {
+                                Text("\(formatWeightValue(weightValue)) kg")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                    .padding(.top, 2)
+                            }
                         } else {
                             Rectangle()
                                 .fill(Color(red: 0.15, green: 0.15, blue: 0.15))
@@ -94,17 +112,20 @@ struct ComparisonCard: View {
                                     showingPhotoSelector = true
                                 }
                         }
-                        
-                        if let photo = leftPhoto {
-                            Text(formatDate(photo.date))
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                        }
                     }
                     
                     // Right photo with date and controls 
                     VStack(spacing: 4) {
+                        // Date on top
+                        if let photo = rightPhoto {
+                            Text(formatDate(photo.date))
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                                .padding(.bottom, 2)
+                                .padding(.top, 8)
+                        }
+                        
                         if let photo = rightPhoto, let image = photo.image {
                             ZStack(alignment: .topLeading) {
                                 Image(uiImage: image)
@@ -126,6 +147,15 @@ struct ComparisonCard: View {
                                 isSelectingLeftPhoto = false
                                 showingPhotoSelector = true
                             }
+                            
+                            // Weight on bottom
+                            if let weightValue = newMeasurements[.weight] {
+                                Text("\(formatWeightValue(weightValue)) kg")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                    .padding(.top, 2)
+                            }
                         } else {
                             Rectangle()
                                 .fill(Color(red: 0.15, green: 0.15, blue: 0.15))
@@ -140,13 +170,6 @@ struct ComparisonCard: View {
                                     isSelectingLeftPhoto = false
                                     showingPhotoSelector = true
                                 }
-                        }
-                        
-                        if let photo = rightPhoto {
-                            Text(formatDate(photo.date))
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
                         }
                     }
                 }
@@ -196,7 +219,7 @@ struct ComparisonCard: View {
     
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MM/dd/yy"
+        formatter.dateFormat = "MMMM d, yyyy"
         return formatter.string(from: date)
     }
     
@@ -211,6 +234,17 @@ struct ComparisonCard: View {
         } else {
             return "Today"
         }
+    }
+    
+    private func formatWeightValue(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.minimumFractionDigits = 1
+        formatter.maximumFractionDigits = 1
+        
+        if let formattedValue = formatter.string(from: NSNumber(value: value)) {
+            return formattedValue
+        }
+        return "\(value)"
     }
 }
 
@@ -824,13 +858,6 @@ struct MeasurementComparisonView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Measurements")
-                .font(.title3)
-                .fontWeight(.medium)
-                .foregroundColor(.white)
-                .padding(.horizontal, 10)
-                .padding(.top, 6)
-            
             if oldMeasurements.isEmpty && newMeasurements.isEmpty {
                 Text("No measurements")
                     .font(.body)
@@ -856,6 +883,7 @@ struct MeasurementComparisonView: View {
                     }
                 }
                 .padding(.bottom, 10)
+                .padding(.top, 6)
             }
         }
     }
@@ -892,10 +920,16 @@ struct MeasurementComparisonRow: View {
     
     var body: some View {
         HStack(spacing: 8) {
-            Text(type.title)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundColor(.white)
-                .frame(width: 70, alignment: .leading)
+            HStack(spacing: 6) {
+                Image(systemName: type.iconName)
+                    .font(.system(size: 14))
+                    .foregroundColor(.green)
+                
+                Text(type.title)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.white)
+            }
+            .frame(width: 100, alignment: .leading)
             
             Spacer()
             
@@ -997,9 +1031,15 @@ struct MeasurementDetailView: View {
                     ForEach(relevantTypes, id: \.self) { type in
                         if let entry = measurements[type] {
                             HStack {
-                                Text(type.title)
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(.white)
+                                HStack(spacing: 6) {
+                                    Image(systemName: type.iconName)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.green)
+                                    
+                                    Text(type.title)
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.white)
+                                }
                                 
                                 Spacer()
                                 
