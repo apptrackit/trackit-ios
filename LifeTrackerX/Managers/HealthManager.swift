@@ -231,7 +231,7 @@ class HealthManager: ObservableObject {
                     DispatchQueue.main.async {
                         print("No weight samples found")
                         self.fetchingStatus = "No weight samples found"
-                        completion(false)
+                        completion(true) // Still return true even if no data found
                     }
                     return
                 }
@@ -242,6 +242,14 @@ class HealthManager: ObservableObject {
                     
                     var addedCount = 0
                     for sample in samples {
+                        // Skip if the sample came from our app
+                        if let metadata = sample.metadata, 
+                           let source = metadata["source"] as? String, 
+                           source == "LifeTrackerX" {
+                            print("⏭️ Skipping weight sample that originated from LifeTrackerX")
+                            continue
+                        }
+                        
                         let weightInKg = sample.quantity.doubleValue(for: HKUnit.gramUnit(with: .kilo))
                         let entry = StatEntry(
                             date: sample.startDate,
@@ -304,7 +312,7 @@ class HealthManager: ObservableObject {
                     DispatchQueue.main.async {
                         print("No height samples found")
                         self.fetchingStatus = "No height samples found"
-                        completion(false)
+                        completion(true) // Still return true even if no data found
                     }
                     return
                 }
@@ -315,6 +323,14 @@ class HealthManager: ObservableObject {
                     
                     var addedCount = 0
                     for sample in samples {
+                        // Skip if the sample came from our app
+                        if let metadata = sample.metadata, 
+                           let source = metadata["source"] as? String, 
+                           source == "LifeTrackerX" {
+                            print("⏭️ Skipping height sample that originated from LifeTrackerX")
+                            continue
+                        }
+                        
                         let heightInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
                         let entry = StatEntry(
                             date: sample.startDate,
@@ -350,15 +366,17 @@ class HealthManager: ObservableObject {
         let predicate = HKQuery.predicateForSamples(withStart: Date.distantPast, end: Date(), options: .strictEndDate)
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         
-        let query = HKSampleQuery(sampleType: bodyFatType,
-                                predicate: predicate,
-                                limit: HKObjectQueryNoLimit,
-                                sortDescriptors: [sortDescriptor]) { [weak self] (query, samples, error) in
+        let query = HKSampleQuery(
+            sampleType: bodyFatType,
+            predicate: predicate,
+            limit: HKObjectQueryNoLimit,
+            sortDescriptors: [sortDescriptor]
+        ) { [weak self] query, samples, error in
             guard let self = self else { return }
             
             if let error = error {
                 DispatchQueue.main.async {
-                    print("❌ Error fetching body fat data: \(error.localizedDescription)")
+                    print("Error fetching body fat data: \(error.localizedDescription)")
                     self.fetchingStatus = "Error fetching body fat data: \(error.localizedDescription)"
                     completion(false)
                 }
@@ -380,6 +398,14 @@ class HealthManager: ObservableObject {
                 
                 var addedCount = 0
                 for sample in samples {
+                    // Skip if the sample came from our app
+                    if let metadata = sample.metadata, 
+                       let source = metadata["source"] as? String, 
+                       source == "LifeTrackerX" {
+                        print("⏭️ Skipping body fat sample that originated from LifeTrackerX")
+                        continue
+                    }
+                    
                     let bodyFatDecimal = sample.quantity.doubleValue(for: HKUnit.percent())
                     // Convert from decimal (0.15) to percentage (15%)
                     let bodyFatPercentage = bodyFatDecimal * 100.0
@@ -448,6 +474,14 @@ class HealthManager: ObservableObject {
                 
                 var addedCount = 0
                 for sample in samples {
+                    // Skip if the sample came from our app
+                    if let metadata = sample.metadata, 
+                       let source = metadata["source"] as? String, 
+                       source == "LifeTrackerX" {
+                        print("⏭️ Skipping waist sample that originated from LifeTrackerX")
+                        continue
+                    }
+                    
                     let waistInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
                     let entry = StatEntry(
                         date: sample.startDate,
@@ -521,7 +555,7 @@ class HealthManager: ObservableObject {
                                     quantity: quantity,
                                     start: entry.date,
                                     end: entry.date,
-                                    metadata: ["source": "LifeTrackerX"])
+                                    metadata: ["source": "LifeTrackerX", "lifeTrackerXEntryId": entry.id.uuidString])
         
         print("📝 Attempting to save \(entry.type) to HealthKit: \(value) at \(entry.date)")
         healthStore.save(sample) { success, error in
