@@ -150,6 +150,23 @@ struct ProgressPhotosView: View {
         .navigationTitle("Progress Photos")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                if selectedCategory != nil {
+                    Button(action: {
+                        withAnimation {
+                            selectedCategory = nil
+                        }
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Back")
+                        }
+                        .foregroundColor(.white)
+                    }
+                }
+            }
+            
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
                     showingAddPhotoSheet = true
