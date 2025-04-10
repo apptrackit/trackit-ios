@@ -1,7 +1,7 @@
 import Foundation
 
 enum StatType: String, Codable, CaseIterable, Identifiable {
-    case weight, height, bodyFat, bmi, waist, bicep, chest, thigh, shoulder
+    case weight, height, bodyFat, bmi, waist, bicep, chest, thigh, shoulder, glutes
     case lbm, fm, ffmi, bmr, bsa  // Added new calculated measurements
     
     var id: String { self.rawValue }
@@ -17,6 +17,7 @@ enum StatType: String, Codable, CaseIterable, Identifiable {
         case .chest: return "cm"
         case .thigh: return "cm"
         case .shoulder: return "cm"
+        case .glutes: return "cm"
         case .lbm: return "kg"
         case .fm: return "kg"
         case .ffmi: return ""
@@ -36,6 +37,7 @@ enum StatType: String, Codable, CaseIterable, Identifiable {
         case .chest: return "Chest"
         case .thigh: return "Thigh"
         case .shoulder: return "Shoulder"
+        case .glutes: return "Glutes"
         case .lbm: return "Lean Body Mass"
         case .fm: return "Fat Mass"
         case .ffmi: return "Fat-Free Mass Index"
@@ -65,6 +67,7 @@ enum StatType: String, Codable, CaseIterable, Identifiable {
         case .chest: return "figure.arms.open"
         case .thigh: return "figure.walk"
         case .shoulder: return "figure.arms.open"
+        case .glutes: return "figure.climbing"
         case .lbm: return "figure.arms.open"
         case .fm: return "figure.arms.open"
         case .ffmi: return "chart.bar.fill"

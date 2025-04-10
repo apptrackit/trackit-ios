@@ -439,7 +439,7 @@ struct MultiCategorySelector: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 15) {
-                ForEach(PhotoCategory.allCases) { category in
+                ForEach(PhotoCategory.allCases.filter { $0 != .all }) { category in
                     MultipleCategorySelectorButton(
                         category: category,
                         isSelected: selectedCategories.contains(category),
@@ -526,7 +526,7 @@ struct MeasurementSummaryView: View {
     private var measurements: [StatType: Double] {
         var result: [StatType: Double] = [:]
         
-        let relevantTypes: [StatType] = [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder]
+        let relevantTypes: [StatType] = [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder, .glutes]
         
         for type in relevantTypes {
             if let entry = historyManager.getEntries(for: type)
