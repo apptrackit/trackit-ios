@@ -191,13 +191,17 @@ struct ComparisonCard: View {
         .cornerRadius(14)
         .padding(.horizontal, 4)
         .onAppear {
-            // Initialize with oldest photo on left, newest on right
+            // Initialize photos based on availability
             if categoryPhotos.count >= 2 {
                 // Sort photos by date (oldest to newest)
                 let sortedIndices = categoryPhotos.indices.sorted { categoryPhotos[$0].date < categoryPhotos[$1].date }
                 // Set leftPhotoIndex to oldest photo, rightPhotoIndex to newest photo
                 leftPhotoIndex = sortedIndices.first ?? 0
                 rightPhotoIndex = sortedIndices.last ?? (categoryPhotos.count - 1)
+            } else if categoryPhotos.count == 1 {
+                // If there's only one photo, show it in the BEFORE box
+                leftPhotoIndex = 0
+                // No photo for AFTER (rightPhotoIndex will be out of bounds)
             }
         }
         .sheet(isPresented: $showingPhotoSelector) {
