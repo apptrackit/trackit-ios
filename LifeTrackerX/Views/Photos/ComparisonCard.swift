@@ -103,7 +103,7 @@ struct ComparisonCard: View {
                         }
                     }
                     
-                    // Right photo with date and controls
+                    // Right photo with date and controls 
                     VStack(spacing: 4) {
                         if let photo = rightPhoto, let image = photo.image {
                             ZStack(alignment: .topLeading) {
