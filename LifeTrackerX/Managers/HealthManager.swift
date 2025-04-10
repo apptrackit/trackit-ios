@@ -528,7 +528,7 @@ class HealthManager: ObservableObject {
             quantityType = HKQuantityType.quantityType(forIdentifier: .waistCircumference)
             unit = HKUnit.meterUnit(with: .centi)
             print("📝 Preparing to save waist: \(value) \(unit)")
-        case .bmi, .bicep, .chest, .thigh, .shoulder, .lbm, .fm, .ffmi, .bmr, .bsa:
+        case .bmi, .bicep, .chest, .thigh, .shoulder, .glutes, .lbm, .fm, .ffmi, .bmr, .bsa:
             print("❌ \(entry.type) cannot be saved to HealthKit")
             completion(false, nil)
             return
@@ -587,7 +587,7 @@ class HealthManager: ObservableObject {
         case .waist:
             quantityType = HKQuantityType.quantityType(forIdentifier: .waistCircumference)
             print("🗑️ Preparing to delete waist entry")
-        case .bmi, .bicep, .chest, .thigh, .shoulder, .lbm, .fm, .ffmi, .bmr, .bsa:
+        case .bmi, .bicep, .chest, .thigh, .shoulder, .glutes, .lbm, .fm, .ffmi, .bmr, .bsa:
             print("❌ Cannot delete \(entry.type) from HealthKit - not supported")
             completion(false, nil)
             return

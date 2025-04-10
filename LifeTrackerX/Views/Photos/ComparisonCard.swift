@@ -670,7 +670,7 @@ struct PhotoGrid: View {
         guard let measurements = photo.associatedMeasurements else { return [] }
         
         // Priority order for measurements to show
-        let priorityTypes: [StatType] = [.weight, .bodyFat, .chest, .waist]
+        let priorityTypes: [StatType] = [.weight, .bodyFat, .chest, .waist, .glutes]
         
         // Return up to 2 measurements based on priority
         return priorityTypes.compactMap { type in
@@ -819,7 +819,7 @@ struct MeasurementComparisonView: View {
     }
     
     private var relevantTypes: [StatType] {
-        return [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder]
+        return [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder, .glutes]
     }
     
     var body: some View {
@@ -977,7 +977,7 @@ struct MeasurementDetailView: View {
     }
     
     private var relevantTypes: [StatType] {
-        return [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder]
+        return [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder, .glutes]
     }
     
     var body: some View {

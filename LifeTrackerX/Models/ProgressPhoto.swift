@@ -4,7 +4,7 @@ import SwiftUI
 enum PhotoCategory: String, CaseIterable, Identifiable, Codable {
     case all
     case front, side, back
-    case arms, chest, legs, shoulders, abs
+    case arms, chest, legs, shoulders, abs, glutes
     case other
     
     var id: String { self.rawValue }
@@ -20,6 +20,7 @@ enum PhotoCategory: String, CaseIterable, Identifiable, Codable {
         case .legs: return "Legs"
         case .shoulders: return "Shoulders"
         case .abs: return "Abs"
+        case .glutes: return "Glutes"
         case .other: return "Other"
         }
     }
@@ -35,6 +36,7 @@ enum PhotoCategory: String, CaseIterable, Identifiable, Codable {
         case .legs: return "figure.walk"
         case .shoulders: return "figure.american.football"
         case .abs: return "figure.core.training"
+        case .glutes: return "figure.cross.training"
         case .other: return "camera.fill"
         }
     }

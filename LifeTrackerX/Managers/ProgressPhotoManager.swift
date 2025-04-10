@@ -123,7 +123,7 @@ class ProgressPhotoManager: ObservableObject {
         var measurements: [StatEntry] = []
         
         // Get key measurements close to the photo date
-        let relevantTypes: [StatType] = [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder]
+        let relevantTypes: [StatType] = [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder, .glutes]
         
         for type in relevantTypes {
             if let entry = statsManager.getEntries(for: type)

@@ -526,7 +526,7 @@ struct MeasurementSummaryView: View {
     private var measurements: [StatType: Double] {
         var result: [StatType: Double] = [:]
         
-        let relevantTypes: [StatType] = [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder]
+        let relevantTypes: [StatType] = [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder, .glutes]
         
         for type in relevantTypes {
             if let entry = historyManager.getEntries(for: type)
