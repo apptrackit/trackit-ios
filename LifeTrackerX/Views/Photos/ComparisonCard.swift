@@ -168,10 +168,13 @@ struct ComparisonCard: View {
         .cornerRadius(14)
         .padding(.horizontal, 4)
         .onAppear {
-            // Initialize with latest photos
+            // Initialize with oldest photo on left, newest on right
             if categoryPhotos.count >= 2 {
-                rightPhotoIndex = categoryPhotos.count - 1
-                leftPhotoIndex = rightPhotoIndex - 1
+                // Sort photos by date (oldest to newest)
+                let sortedIndices = categoryPhotos.indices.sorted { categoryPhotos[$0].date < categoryPhotos[$1].date }
+                // Set leftPhotoIndex to oldest photo, rightPhotoIndex to newest photo
+                leftPhotoIndex = sortedIndices.first ?? 0
+                rightPhotoIndex = sortedIndices.last ?? (categoryPhotos.count - 1)
             }
         }
         .sheet(isPresented: $showingPhotoSelector) {
