@@ -251,7 +251,7 @@ struct PhotoSelectorView: View {
             case .weight: return "scalemass"
             case .bodyFat: return "percent"
             case .bicep: return "figure.arms.open"
-            case .chest: return "cherry"
+            case .chest: return "heart.fill"
             case .shoulder: return "figure.american.football"
             case .waist: return "circle.dashed"
             case .thigh: return "figure.walk"
@@ -393,7 +393,21 @@ struct DateSortedPhotosView: View {
             formatMonth(photo.date)
         }
         
-        ForEach(groupedByMonth.keys.sorted(by: <), id: \.self) { month in
+        // Get unique months as Date objects for proper chronological sorting
+        let monthDates = groupedByMonth.keys.compactMap { key -> Date? in
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "MMMM yyyy"
+            return dateFormatter.date(from: key)
+        }
+        
+        // Sort months in reverse chronological order (newest first)
+        let sortedMonths = monthDates.sorted(by: >).compactMap { date -> String? in
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "MMMM yyyy"
+            return dateFormatter.string(from: date)
+        }
+        
+        ForEach(sortedMonths, id: \.self) { month in
             if let monthPhotos = groupedByMonth[month] {
                 // Month header
                 HStack {

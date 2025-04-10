@@ -31,7 +31,7 @@ enum PhotoCategory: String, CaseIterable, Identifiable, Codable {
         case .side: return "person.fill.turn.right"
         case .back: return "person.fill.turn.down"
         case .arms: return "figure.arms.open"
-        case .chest: return "cherry"
+        case .chest: return "heart.fill"
         case .legs: return "figure.walk"
         case .shoulders: return "figure.american.football"
         case .abs: return "figure.core.training"
