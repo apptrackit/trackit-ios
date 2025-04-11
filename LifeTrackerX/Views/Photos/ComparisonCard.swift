@@ -47,7 +47,15 @@ struct ComparisonCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            
+            // Header
+            HStack {
+                Text("Comparison")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 10)
             // Photo comparison
             GeometryReader { geometry in
                 let availableWidth = geometry.size.width - 16
@@ -57,15 +65,7 @@ struct ComparisonCard: View {
                 HStack(spacing: 8) {
                     // Left photo with date and controls
                     VStack(spacing: 4) {
-                        // Date on top
-                        if let photo = leftPhoto {
-                            Text(formatDate(photo.date))
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                                .padding(.bottom, 2)
-                                .padding(.top, 8)
-                        }
+                        
                         
                         if let photo = leftPhoto, let image = photo.image {
                             ZStack(alignment: .topLeading) {
@@ -89,10 +89,10 @@ struct ComparisonCard: View {
                                 showingPhotoSelector = true
                             }
                             
-                            // Weight on bottom
-                            if let weightValue = oldMeasurements[.weight] {
-                                Text("\(formatWeightValue(weightValue)) kg")
-                                    .font(.system(size: 16, weight: .bold))
+                            // Date on top
+                            if let photo = leftPhoto {
+                                Text(formatDate(photo.date))
+                                    .font(.system(size: 16, weight: .medium))
                                     .foregroundColor(.white)
                                     .lineLimit(1)
                                     .padding(.top, 2)
@@ -116,15 +116,7 @@ struct ComparisonCard: View {
                     
                     // Right photo with date and controls 
                     VStack(spacing: 4) {
-                        // Date on top
-                        if let photo = rightPhoto {
-                            Text(formatDate(photo.date))
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                                .padding(.bottom, 2)
-                                .padding(.top, 8)
-                        }
+                        
                         
                         if let photo = rightPhoto, let image = photo.image {
                             ZStack(alignment: .topLeading) {
@@ -148,10 +140,10 @@ struct ComparisonCard: View {
                                 showingPhotoSelector = true
                             }
                             
-                            // Weight on bottom
-                            if let weightValue = newMeasurements[.weight] {
-                                Text("\(formatWeightValue(weightValue)) kg")
-                                    .font(.system(size: 16, weight: .bold))
+                            // Date on top
+                            if let photo = rightPhoto {
+                                Text(formatDate(photo.date))
+                                    .font(.system(size: 16, weight: .medium))
                                     .foregroundColor(.white)
                                     .lineLimit(1)
                                     .padding(.top, 2)
@@ -175,7 +167,7 @@ struct ComparisonCard: View {
                 }
                 .padding(.horizontal, 8)
             }
-            .frame(height: 300)
+            .frame(height: 270)
             
             // Stats comparison
             if let leftPhoto = leftPhoto, let rightPhoto = rightPhoto {
