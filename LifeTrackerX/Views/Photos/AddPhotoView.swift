@@ -1,5 +1,7 @@
 import SwiftUI
 import PhotosUI
+import ImageIO
+import Photos
 
 struct AddPhotoView: View {
     @ObservedObject var photoManager: ProgressPhotoManager
@@ -178,6 +180,128 @@ struct AddPhotoView: View {
             if let data = try? await selectedItem?.loadTransferable(type: Data.self) {
                 if let uiImage = UIImage(data: data) {
                     selectedImage = uiImage
+                    
+                    // Store original date to check if it's changed
+                    let originalDate = selectedDate
+                    
+                    // Try to get creation date directly from PHAsset
+                    if let assetIdentifier = selectedItem?.itemIdentifier,
+                       let assetResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetIdentifier], options: nil).firstObject {
+                        print("Found PHAsset with creation date: \(String(describing: assetResult.creationDate))")
+                        
+                        if let creationDate = assetResult.creationDate {
+                            selectedDate = creationDate
+                            print("Set date from PHAsset: \(creationDate)")
+                        }
+                    }
+                    
+                    // If PHAsset didn't work, try metadata extraction
+                    if selectedDate == originalDate { // Only proceed if date hasn't been updated by PHAsset
+                        // Extract creation date from image metadata
+                        if let imageSource = CGImageSourceCreateWithData(data as CFData, nil) {
+                            if let imageProperties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [String: Any] {
+                                print("Image properties found: \(imageProperties.keys)")
+                                
+                                // Try EXIF dictionary first
+                                if let exifDictionary = imageProperties[kCGImagePropertyExifDictionary as String] as? [String: Any] {
+                                    print("EXIF data found: \(exifDictionary.keys)")
+                                    
+                                    // Try various EXIF date properties
+                                    if let dateTimeOriginal = exifDictionary[kCGImagePropertyExifDateTimeOriginal as String] as? String {
+                                        print("Found EXIF DateTimeOriginal: \(dateTimeOriginal)")
+                                        let dateFormatter = DateFormatter()
+                                        dateFormatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+                                        
+                                        if let date = dateFormatter.date(from: dateTimeOriginal) {
+                                            print("Successfully parsed date: \(date)")
+                                            selectedDate = date
+                                        }
+                                    } else if let dateTimeDigitized = exifDictionary[kCGImagePropertyExifDateTimeDigitized as String] as? String {
+                                        print("Found EXIF DateTimeDigitized: \(dateTimeDigitized)")
+                                        let dateFormatter = DateFormatter()
+                                        dateFormatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+                                        
+                                        if let date = dateFormatter.date(from: dateTimeDigitized) {
+                                            print("Successfully parsed date: \(date)")
+                                            selectedDate = date
+                                        }
+                                    }
+                                }
+                                
+                                // Try TIFF dictionary if EXIF didn't work
+                                if let tiffDictionary = imageProperties[kCGImagePropertyTIFFDictionary as String] as? [String: Any] {
+                                    print("TIFF data found: \(tiffDictionary.keys)")
+                                    
+                                    if let dateTime = tiffDictionary[kCGImagePropertyTIFFDateTime as String] as? String {
+                                        print("Found TIFF DateTime: \(dateTime)")
+                                        let dateFormatter = DateFormatter()
+                                        dateFormatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+                                        
+                                        if let date = dateFormatter.date(from: dateTime) {
+                                            print("Successfully parsed date: \(date)")
+                                            selectedDate = date
+                                        }
+                                    }
+                                }
+                                
+                                // Try GPS dictionary if others didn't work
+                                if let gpsDictionary = imageProperties[kCGImagePropertyGPSDictionary as String] as? [String: Any] {
+                                    print("GPS data found: \(gpsDictionary.keys)")
+                                    
+                                    if let dateStamp = gpsDictionary[kCGImagePropertyGPSDateStamp as String] as? String {
+                                        print("Found GPS DateStamp: \(dateStamp)")
+                                        
+                                        // GPS date format is typically different
+                                        let dateFormatter = DateFormatter()
+                                        dateFormatter.dateFormat = "yyyy:MM:dd"
+                                        
+                                        if let date = dateFormatter.date(from: dateStamp) {
+                                            // If we have time data, try to combine
+                                            if let timeStamp = gpsDictionary[kCGImagePropertyGPSTimeStamp as String] as? String {
+                                                print("Found GPS TimeStamp: \(timeStamp)")
+                                                let timeFormatter = DateFormatter()
+                                                timeFormatter.dateFormat = "HH:mm:ss"
+                                                
+                                                if let time = timeFormatter.date(from: timeStamp) {
+                                                    let calendar = Calendar.current
+                                                    let timeComponents = calendar.dateComponents([.hour, .minute, .second], from: time)
+                                                    
+                                                    var dateComponents = calendar.dateComponents([.year, .month, .day], from: date)
+                                                    dateComponents.hour = timeComponents.hour
+                                                    dateComponents.minute = timeComponents.minute
+                                                    dateComponents.second = timeComponents.second
+                                                    
+                                                    if let combinedDate = calendar.date(from: dateComponents) {
+                                                        print("Successfully parsed GPS date/time: \(combinedDate)")
+                                                        selectedDate = combinedDate
+                                                    }
+                                                } else {
+                                                    print("Successfully parsed GPS date: \(date)")
+                                                    selectedDate = date
+                                                }
+                                            } else {
+                                                print("Successfully parsed GPS date: \(date)")
+                                                selectedDate = date
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Print final selected date
+                                print("Final selected date: \(selectedDate)")
+                            } else {
+                                print("No image properties found")
+                            }
+                        } else {
+                            print("Failed to create image source")
+                        }
+                    }
+                    
+                    // Final fallback: Try to check if the image has creation date as UIImage property
+                    if selectedDate == originalDate {
+                        // This is a last resort option - fall back to current date if no metadata was found
+                        print("No metadata found, using current date")
+                    }
                 }
             }
             
@@ -395,6 +519,128 @@ struct EditPhotoView: View {
             if let data = try? await selectedItem?.loadTransferable(type: Data.self) {
                 if let uiImage = UIImage(data: data) {
                     selectedImage = uiImage
+                    
+                    // Store original date to check if it's changed
+                    let originalDate = selectedDate
+                    
+                    // Try to get creation date directly from PHAsset
+                    if let assetIdentifier = selectedItem?.itemIdentifier,
+                       let assetResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetIdentifier], options: nil).firstObject {
+                        print("Edit mode - Found PHAsset with creation date: \(String(describing: assetResult.creationDate))")
+                        
+                        if let creationDate = assetResult.creationDate {
+                            selectedDate = creationDate
+                            print("Edit mode - Set date from PHAsset: \(creationDate)")
+                        }
+                    }
+                    
+                    // If PHAsset didn't work, try metadata extraction
+                    if selectedDate == originalDate { // Only proceed if date hasn't been updated by PHAsset
+                        // Extract creation date from image metadata
+                        if let imageSource = CGImageSourceCreateWithData(data as CFData, nil) {
+                            if let imageProperties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [String: Any] {
+                                print("Edit mode - Image properties found: \(imageProperties.keys)")
+                                
+                                // Try EXIF dictionary first
+                                if let exifDictionary = imageProperties[kCGImagePropertyExifDictionary as String] as? [String: Any] {
+                                    print("Edit mode - EXIF data found: \(exifDictionary.keys)")
+                                    
+                                    // Try various EXIF date properties
+                                    if let dateTimeOriginal = exifDictionary[kCGImagePropertyExifDateTimeOriginal as String] as? String {
+                                        print("Edit mode - Found EXIF DateTimeOriginal: \(dateTimeOriginal)")
+                                        let dateFormatter = DateFormatter()
+                                        dateFormatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+                                        
+                                        if let date = dateFormatter.date(from: dateTimeOriginal) {
+                                            print("Edit mode - Successfully parsed date: \(date)")
+                                            selectedDate = date
+                                        }
+                                    } else if let dateTimeDigitized = exifDictionary[kCGImagePropertyExifDateTimeDigitized as String] as? String {
+                                        print("Edit mode - Found EXIF DateTimeDigitized: \(dateTimeDigitized)")
+                                        let dateFormatter = DateFormatter()
+                                        dateFormatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+                                        
+                                        if let date = dateFormatter.date(from: dateTimeDigitized) {
+                                            print("Edit mode - Successfully parsed date: \(date)")
+                                            selectedDate = date
+                                        }
+                                    }
+                                }
+                                
+                                // Try TIFF dictionary if EXIF didn't work
+                                if let tiffDictionary = imageProperties[kCGImagePropertyTIFFDictionary as String] as? [String: Any] {
+                                    print("Edit mode - TIFF data found: \(tiffDictionary.keys)")
+                                    
+                                    if let dateTime = tiffDictionary[kCGImagePropertyTIFFDateTime as String] as? String {
+                                        print("Edit mode - Found TIFF DateTime: \(dateTime)")
+                                        let dateFormatter = DateFormatter()
+                                        dateFormatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+                                        
+                                        if let date = dateFormatter.date(from: dateTime) {
+                                            print("Edit mode - Successfully parsed date: \(date)")
+                                            selectedDate = date
+                                        }
+                                    }
+                                }
+                                
+                                // Try GPS dictionary if others didn't work
+                                if let gpsDictionary = imageProperties[kCGImagePropertyGPSDictionary as String] as? [String: Any] {
+                                    print("Edit mode - GPS data found: \(gpsDictionary.keys)")
+                                    
+                                    if let dateStamp = gpsDictionary[kCGImagePropertyGPSDateStamp as String] as? String {
+                                        print("Edit mode - Found GPS DateStamp: \(dateStamp)")
+                                        
+                                        // GPS date format is typically different
+                                        let dateFormatter = DateFormatter()
+                                        dateFormatter.dateFormat = "yyyy:MM:dd"
+                                        
+                                        if let date = dateFormatter.date(from: dateStamp) {
+                                            // If we have time data, try to combine
+                                            if let timeStamp = gpsDictionary[kCGImagePropertyGPSTimeStamp as String] as? String {
+                                                print("Edit mode - Found GPS TimeStamp: \(timeStamp)")
+                                                let timeFormatter = DateFormatter()
+                                                timeFormatter.dateFormat = "HH:mm:ss"
+                                                
+                                                if let time = timeFormatter.date(from: timeStamp) {
+                                                    let calendar = Calendar.current
+                                                    let timeComponents = calendar.dateComponents([.hour, .minute, .second], from: time)
+                                                    
+                                                    var dateComponents = calendar.dateComponents([.year, .month, .day], from: date)
+                                                    dateComponents.hour = timeComponents.hour
+                                                    dateComponents.minute = timeComponents.minute
+                                                    dateComponents.second = timeComponents.second
+                                                    
+                                                    if let combinedDate = calendar.date(from: dateComponents) {
+                                                        print("Edit mode - Successfully parsed GPS date/time: \(combinedDate)")
+                                                        selectedDate = combinedDate
+                                                    }
+                                                } else {
+                                                    print("Edit mode - Successfully parsed GPS date: \(date)")
+                                                    selectedDate = date
+                                                }
+                                            } else {
+                                                print("Edit mode - Successfully parsed GPS date: \(date)")
+                                                selectedDate = date
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Print final selected date
+                                print("Edit mode - Final selected date: \(selectedDate)")
+                            } else {
+                                print("Edit mode - No image properties found")
+                            }
+                        } else {
+                            print("Edit mode - Failed to create image source")
+                        }
+                    }
+                    
+                    // Final fallback: Try to check if the image has creation date as UIImage property
+                    if selectedDate == originalDate {
+                        // This is a last resort option - fall back to current date
+                        print("Edit mode - No metadata found, using original date")
+                    }
                 }
             }
             
