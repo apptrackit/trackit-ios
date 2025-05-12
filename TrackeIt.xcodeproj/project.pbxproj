@@ -199,7 +199,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 49565AA02D9AC3FA00590139 /* Build configuration list for PBXProject "LifeTrackerX" */;
+			buildConfigurationList = 49565AA02D9AC3FA00590139 /* Build configuration list for PBXProject "TrackeIt" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -546,7 +546,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		49565AA02D9AC3FA00590139 /* Build configuration list for PBXProject "LifeTrackerX" */ = {
+		49565AA02D9AC3FA00590139 /* Build configuration list for PBXProject "TrackeIt" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				49565AC72D9AC3FC00590139 /* Debug */,

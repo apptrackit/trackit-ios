@@ -3,11 +3,24 @@ import SwiftUI
 struct ProgressView: View {
     @ObservedObject private var historyManager = StatsHistoryManager.shared
     
+    // Helper function to get the date of the most recent entry for a stat type
+    private func getLatestEntryDate(for statType: StatType) -> Date {
+        return historyManager.getEntries(for: statType).first?.date ?? .distantPast
+    }
+    
+    // Helper function to sort stat types by their most recent entry
+    private func sortedStatTypes(_ types: [StatType]) -> [StatType] {
+        return types.sorted { type1, type2 in
+            getLatestEntryDate(for: type1) > getLatestEntryDate(for: type2)
+        }
+    }
+    
     var body: some View {
         List {
             // HealthKit compatible measurements
             Section("HealthKit Measurements") {
-                ForEach([StatType.weight, .height, .bodyFat, .waist], id: \.self) { statType in
+                let healthKitTypes = [StatType.weight, .height, .bodyFat, .waist]
+                ForEach(sortedStatTypes(healthKitTypes), id: \.self) { statType in
                     NavigationLink(destination: HistoryView(historyManager: historyManager, statType: statType)) {
                         StatRow(statType: statType, value: historyManager.getLatestValue(for: statType))
                     }
@@ -16,7 +29,8 @@ struct ProgressView: View {
             
             // Custom measurements
             Section("Body Measurements") {
-                ForEach([StatType.bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm], id: \.self) { statType in
+                let bodyTypes = [StatType.bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm]
+                ForEach(sortedStatTypes(bodyTypes), id: \.self) { statType in
                     NavigationLink(destination: HistoryView(historyManager: historyManager, statType: statType)) {
                         StatRow(statType: statType, value: historyManager.getLatestValue(for: statType))
                     }
@@ -29,44 +43,36 @@ struct ProgressView: View {
                 let height = historyManager.getLatestValue(for: .height)
                 let bodyFat = historyManager.getLatestValue(for: .bodyFat)
                 
-                // BMI
-                let bmi = calculateBMI(weight: weight, height: height)
-                NavigationLink(destination: HistoryView(historyManager: historyManager, statType: .bmi)) {
-                    StatRow(statType: .bmi, value: bmi)
-                }
-                
-                // LBM (Lean Body Mass)
-                let lbm = calculateLBM(weight: weight, bodyFat: bodyFat)
-                NavigationLink(destination: HistoryView(historyManager: historyManager, statType: .lbm)) {
-                    StatRow(statType: .lbm, value: lbm)
-                }
-                
-                // FM (Fat Mass)
-                let fm = calculateFM(weight: weight, bodyFat: bodyFat)
-                NavigationLink(destination: HistoryView(historyManager: historyManager, statType: .fm)) {
-                    StatRow(statType: .fm, value: fm)
-                }
-                
-                // FFMI (Fat-Free Mass Index)
-                let ffmi = calculateFFMI(lbm: lbm, height: height)
-                NavigationLink(destination: HistoryView(historyManager: historyManager, statType: .ffmi)) {
-                    StatRow(statType: .ffmi, value: ffmi)
-                }
-                
-                // BMR (Basal Metabolic Rate)
-                let bmr = calculateBMR(lbm: lbm)
-                NavigationLink(destination: HistoryView(historyManager: historyManager, statType: .bmr)) {
-                    StatRow(statType: .bmr, value: bmr)
-                }
-                
-                // BSA (Body Surface Area)
-                let bsa = calculateBSA(weight: weight, height: height)
-                NavigationLink(destination: HistoryView(historyManager: historyManager, statType: .bsa)) {
-                    StatRow(statType: .bsa, value: bsa)
+                let calculatedTypes = [StatType.bmi, .lbm, .fm, .ffmi, .bmr, .bsa]
+                ForEach(sortedStatTypes(calculatedTypes), id: \.self) { statType in
+                    NavigationLink(destination: HistoryView(historyManager: historyManager, statType: statType)) {
+                        StatRow(statType: statType, value: getCalculatedValue(statType: statType, weight: weight, height: height, bodyFat: bodyFat))
+                    }
                 }
             }
         }
         .navigationTitle("Progress")
+    }
+    
+    private func getCalculatedValue(statType: StatType, weight: Double?, height: Double?, bodyFat: Double?) -> Double? {
+        switch statType {
+        case .bmi:
+            return calculateBMI(weight: weight, height: height)
+        case .lbm:
+            return calculateLBM(weight: weight, bodyFat: bodyFat)
+        case .fm:
+            return calculateFM(weight: weight, bodyFat: bodyFat)
+        case .ffmi:
+            let lbm = calculateLBM(weight: weight, bodyFat: bodyFat)
+            return calculateFFMI(lbm: lbm, height: height)
+        case .bmr:
+            let lbm = calculateLBM(weight: weight, bodyFat: bodyFat)
+            return calculateBMR(lbm: lbm)
+        case .bsa:
+            return calculateBSA(weight: weight, height: height)
+        default:
+            return nil
+        }
     }
     
     private func calculateBMI(weight: Double?, height: Double?) -> Double? {
