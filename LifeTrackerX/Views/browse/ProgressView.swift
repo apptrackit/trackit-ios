@@ -16,7 +16,7 @@ struct ProgressView: View {
             
             // Custom measurements
             Section("Body Measurements") {
-                ForEach([StatType.bicep, .chest, .thigh, .shoulder], id: \.self) { statType in
+                ForEach([StatType.bicep, .chest, .thigh, .shoulder, .glutes], id: \.self) { statType in
                     NavigationLink(destination: HistoryView(historyManager: historyManager, statType: statType)) {
                         StatRow(statType: statType, value: historyManager.getLatestValue(for: statType))
                     }

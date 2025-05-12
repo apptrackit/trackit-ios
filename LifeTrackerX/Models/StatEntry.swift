@@ -1,6 +1,6 @@
 import Foundation
 
-enum StatSource: String, Codable {
+enum StatSource: String, Codable, CaseIterable {
     case manual
     case appleHealth
     case automated
@@ -8,9 +8,9 @@ enum StatSource: String, Codable {
     var iconName: String {
         switch self {
         case .manual:
-            return "person.fill"
+            return "figure.walk"
         case .appleHealth:
-            return "heart.fill"
+            return "applehealthdark"
         case .automated:
             return "gearshape.2.fill"
         }

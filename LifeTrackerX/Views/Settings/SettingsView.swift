@@ -6,6 +6,7 @@ struct SettingsView: View {
     @StateObject private var healthManager = HealthManager()
     @ObservedObject var historyManager: StatsHistoryManager
     @State private var showHealthAccessSheet = false
+    @State private var showExportSheet = false
     
     // Computed property to check if Apple Health is actively connected
     private var isAppleHealthConnected: Bool {
@@ -18,6 +19,14 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section(header: Text("Data Management")) {
+                    Button(action: {
+                        showExportSheet = true
+                    }) {
+                        Label("Export Data", systemImage: "square.and.arrow.up")
+                    }
+                }
+                
                 Section(header: Text("Health Data")) {
                     Button(action: {
                         showHealthAccessSheet = true
@@ -101,6 +110,9 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showHealthAccessSheet) {
                 HealthAccessView(healthManager: healthManager, historyManager: historyManager)
+            }
+            .sheet(isPresented: $showExportSheet) {
+                ExportDataView(historyManager: historyManager)
             }
         }
     }
@@ -351,7 +363,6 @@ struct HealthAccessView: View {
     }
 }
 
-// Custom RefreshControl for pull-to-refresh functionality
 struct RefreshControl: View {
     @Binding var isRefreshing: Bool
     let action: () -> Void
