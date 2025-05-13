@@ -6,7 +6,6 @@ struct ContentView: View {
     @StateObject private var healthManager = HealthManager()
     @State private var showingAddEntrySheet = false
     @State private var showingSettingsSheet = false
-    @State private var isRefreshing = false
     @State private var selectedTimeFrame: TimeFrame = .monthly
     
     // Computed properties to get latest values or nil
@@ -54,10 +53,6 @@ struct ContentView: View {
             Color.black.edgesIgnoringSafeArea(.all)
             
             ScrollView {
-                RefreshControl(isRefreshing: $isRefreshing) {
-                    refreshData()
-                }
-                
                 VStack(spacing: 20) {
                     // Welcome Section
                     VStack(alignment: .leading, spacing: 4) {
@@ -255,13 +250,10 @@ struct ContentView: View {
     }
     
     private func refreshData() {
-        isRefreshing = true
         if healthManager.isAuthorized {
             healthManager.importAllHealthData(historyManager: historyManager) { _ in
-                isRefreshing = false
+                print("Data refresh completed")
             }
-        } else {
-            isRefreshing = false
         }
     }
 }
@@ -364,6 +356,28 @@ struct ProgressChartView: View {
         return (min - padding)...(max + padding)
     }
     
+    private func getDateStride() -> Calendar.Component {
+        switch timeFrame {
+        case .weekly:
+            return .day
+        case .monthly:
+            return .day
+        case .yearly:
+            return .month
+        }
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        switch timeFrame {
+        case .weekly:
+            return date.formatted(.dateTime.day().month(.abbreviated))
+        case .monthly:
+            return date.formatted(.dateTime.day())
+        case .yearly:
+            return date.formatted(.dateTime.month(.abbreviated))
+        }
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -401,11 +415,11 @@ struct ProgressChartView: View {
                 .frame(height: 150)
                 .chartYScale(domain: yAxisRange)
                 .chartXAxis {
-                    AxisMarks(values: .stride(by: .day)) { value in
+                    AxisMarks(values: .stride(by: getDateStride(), count: timeFrame == .monthly ? 5 : 1)) { value in
                         AxisGridLine()
                         AxisValueLabel {
                             if let date = value.as(Date.self) {
-                                Text(date.formatted(.dateTime.day().month(.abbreviated)))
+                                Text(formatDate(date))
                             }
                         }
                     }
