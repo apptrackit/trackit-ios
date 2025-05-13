@@ -206,6 +206,9 @@ struct ContentView: View {
                 }
                 .padding(.vertical)
             }
+            .refreshable {
+                await refreshData()
+            }
         }
         .navigationTitle("Dashboard")
         .navigationBarTitleDisplayMode(.inline)
@@ -242,10 +245,13 @@ struct ContentView: View {
         }
     }
     
-    private func refreshData() {
+    private func refreshData() async {
         if healthManager.isAuthorized {
-            healthManager.importAllHealthData(historyManager: historyManager) { _ in
-                print("Data refresh completed")
+            // Start refresh in background without waiting
+            Task(priority: .background) {
+                healthManager.importAllHealthData(historyManager: historyManager) { _ in
+                    print("Data refresh completed")
+                }
             }
         }
     }
