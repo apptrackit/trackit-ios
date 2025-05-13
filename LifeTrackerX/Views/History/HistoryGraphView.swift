@@ -1,10 +1,6 @@
 import SwiftUI
 import Charts
 
-enum TimeFrame: String, CaseIterable {
-    case weekly, monthly, yearly
-}
-
 struct HistoryGraphView: View {
     @ObservedObject var historyManager: StatsHistoryManager
     let statType: StatType
@@ -24,6 +20,11 @@ struct HistoryGraphView: View {
             let monthAgo = calendar.date(byAdding: .month, value: -1, to: now)!
             return historyManager.getEntries(for: statType)
                 .filter { $0.date >= monthAgo }
+                .sorted(by: { $0.date < $1.date })
+        case .sixMonths:
+            let sixMonthsAgo = calendar.date(byAdding: .month, value: -6, to: now)!
+            return historyManager.getEntries(for: statType)
+                .filter { $0.date >= sixMonthsAgo }
                 .sorted(by: { $0.date < $1.date })
         case .yearly:
             let yearAgo = calendar.date(byAdding: .year, value: -1, to: now)!
@@ -85,7 +86,7 @@ struct HistoryGraphView: View {
             return .dateTime.weekday(.abbreviated)
         case .monthly:
             return .dateTime.day()
-        case .yearly:
+        case .sixMonths, .yearly:
             return .dateTime.month(.abbreviated)
         }
     }

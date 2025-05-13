@@ -24,18 +24,18 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		49565AA52D9AC3FA00590139 /* LifeTrackerX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LifeTrackerX.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		49565AB52D9AC3FC00590139 /* LifeTrackerXTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LifeTrackerXTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		49565ABF2D9AC3FC00590139 /* LifeTrackerXUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LifeTrackerXUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		49565AA52D9AC3FA00590139 /* TrackIt.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TrackIt.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		49565AB52D9AC3FC00590139 /* TrackItTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrackItTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		49565ABF2D9AC3FC00590139 /* TrackItUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrackItUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		49FEDF942D9F162E00E7D9B4 /* Exceptions for "LifeTrackerX" folder in "LifeTrackerX" target */ = {
+		49FEDF942D9F162E00E7D9B4 /* Exceptions for "LifeTrackerX" folder in "TrackIt" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = 49565AA42D9AC3FA00590139 /* LifeTrackerX */;
+			target = 49565AA42D9AC3FA00590139 /* TrackIt */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -43,7 +43,7 @@
 		49565AA72D9AC3FA00590139 /* LifeTrackerX */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				49FEDF942D9F162E00E7D9B4 /* Exceptions for "LifeTrackerX" folder in "LifeTrackerX" target */,
+				49FEDF942D9F162E00E7D9B4 /* Exceptions for "LifeTrackerX" folder in "TrackIt" target */,
 			);
 			path = LifeTrackerX;
 			sourceTree = "<group>";
@@ -98,9 +98,9 @@
 		49565AA62D9AC3FA00590139 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				49565AA52D9AC3FA00590139 /* LifeTrackerX.app */,
-				49565AB52D9AC3FC00590139 /* LifeTrackerXTests.xctest */,
-				49565ABF2D9AC3FC00590139 /* LifeTrackerXUITests.xctest */,
+				49565AA52D9AC3FA00590139 /* TrackIt.app */,
+				49565AB52D9AC3FC00590139 /* TrackItTests.xctest */,
+				49565ABF2D9AC3FC00590139 /* TrackItUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -108,9 +108,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		49565AA42D9AC3FA00590139 /* LifeTrackerX */ = {
+		49565AA42D9AC3FA00590139 /* TrackIt */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 49565AC92D9AC3FC00590139 /* Build configuration list for PBXNativeTarget "LifeTrackerX" */;
+			buildConfigurationList = 49565AC92D9AC3FC00590139 /* Build configuration list for PBXNativeTarget "TrackIt" */;
 			buildPhases = (
 				49565AA12D9AC3FA00590139 /* Sources */,
 				49565AA22D9AC3FA00590139 /* Frameworks */,
@@ -123,16 +123,16 @@
 			fileSystemSynchronizedGroups = (
 				49565AA72D9AC3FA00590139 /* LifeTrackerX */,
 			);
-			name = LifeTrackerX;
+			name = TrackIt;
 			packageProductDependencies = (
 			);
 			productName = LifeTrackerX;
-			productReference = 49565AA52D9AC3FA00590139 /* LifeTrackerX.app */;
+			productReference = 49565AA52D9AC3FA00590139 /* TrackIt.app */;
 			productType = "com.apple.product-type.application";
 		};
-		49565AB42D9AC3FC00590139 /* LifeTrackerXTests */ = {
+		49565AB42D9AC3FC00590139 /* TrackItTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 49565ACC2D9AC3FC00590139 /* Build configuration list for PBXNativeTarget "LifeTrackerXTests" */;
+			buildConfigurationList = 49565ACC2D9AC3FC00590139 /* Build configuration list for PBXNativeTarget "TrackItTests" */;
 			buildPhases = (
 				49565AB12D9AC3FC00590139 /* Sources */,
 				49565AB22D9AC3FC00590139 /* Frameworks */,
@@ -146,16 +146,16 @@
 			fileSystemSynchronizedGroups = (
 				49565AB82D9AC3FC00590139 /* LifeTrackerXTests */,
 			);
-			name = LifeTrackerXTests;
+			name = TrackItTests;
 			packageProductDependencies = (
 			);
 			productName = LifeTrackerXTests;
-			productReference = 49565AB52D9AC3FC00590139 /* LifeTrackerXTests.xctest */;
+			productReference = 49565AB52D9AC3FC00590139 /* TrackItTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		49565ABE2D9AC3FC00590139 /* LifeTrackerXUITests */ = {
+		49565ABE2D9AC3FC00590139 /* TrackItUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 49565ACF2D9AC3FC00590139 /* Build configuration list for PBXNativeTarget "LifeTrackerXUITests" */;
+			buildConfigurationList = 49565ACF2D9AC3FC00590139 /* Build configuration list for PBXNativeTarget "TrackItUITests" */;
 			buildPhases = (
 				49565ABB2D9AC3FC00590139 /* Sources */,
 				49565ABC2D9AC3FC00590139 /* Frameworks */,
@@ -169,11 +169,11 @@
 			fileSystemSynchronizedGroups = (
 				49565AC22D9AC3FC00590139 /* LifeTrackerXUITests */,
 			);
-			name = LifeTrackerXUITests;
+			name = TrackItUITests;
 			packageProductDependencies = (
 			);
 			productName = LifeTrackerXUITests;
-			productReference = 49565ABF2D9AC3FC00590139 /* LifeTrackerXUITests.xctest */;
+			productReference = 49565ABF2D9AC3FC00590139 /* TrackItUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -199,7 +199,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 49565AA02D9AC3FA00590139 /* Build configuration list for PBXProject "LifeTrackerX" */;
+			buildConfigurationList = 49565AA02D9AC3FA00590139 /* Build configuration list for PBXProject "TrackIt" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -213,9 +213,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				49565AA42D9AC3FA00590139 /* LifeTrackerX */,
-				49565AB42D9AC3FC00590139 /* LifeTrackerXTests */,
-				49565ABE2D9AC3FC00590139 /* LifeTrackerXUITests */,
+				49565AA42D9AC3FA00590139 /* TrackIt */,
+				49565AB42D9AC3FC00590139 /* TrackItTests */,
+				49565ABE2D9AC3FC00590139 /* TrackItUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -271,12 +271,12 @@
 /* Begin PBXTargetDependency section */
 		49565AB72D9AC3FC00590139 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 49565AA42D9AC3FA00590139 /* LifeTrackerX */;
+			target = 49565AA42D9AC3FA00590139 /* TrackIt */;
 			targetProxy = 49565AB62D9AC3FC00590139 /* PBXContainerItemProxy */;
 		};
 		49565AC12D9AC3FC00590139 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 49565AA42D9AC3FA00590139 /* LifeTrackerX */;
+			target = 49565AA42D9AC3FA00590139 /* TrackIt */;
 			targetProxy = 49565AC02D9AC3FC00590139 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -418,6 +418,7 @@
 				INFOPLIST_FILE = LifeTrackerX/Info.plist;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "This app needs access to your health data to track your fitness progress and provide personalized insights.\nThis app needs access to your health data to track your fitness progress and provide personalized insights.\n\nasThis app needs access to your health data to track your fitness progress and provide personalized insights.\n\nThis app needs access to your health data to track your fitness progress and provide personalized insights.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "This app needs permission to save your measurements to Apple Health to keep your data in sync.\n\n";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "LifeTrackerX requires access to your photo library to allow you to select progress photos and extract their metadata for accurate date tracking.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -452,6 +453,7 @@
 				INFOPLIST_FILE = LifeTrackerX/Info.plist;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "This app needs access to your health data to track your fitness progress and provide personalized insights.\nThis app needs access to your health data to track your fitness progress and provide personalized insights.\n\nasThis app needs access to your health data to track your fitness progress and provide personalized insights.\n\nThis app needs access to your health data to track your fitness progress and provide personalized insights.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "This app needs permission to save your measurements to Apple Health to keep your data in sync.\n\n";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "LifeTrackerX requires access to your photo library to allow you to select progress photos and extract their metadata for accurate date tracking.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -486,7 +488,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LifeTrackerX.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LifeTrackerX";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LifeTrackItrX.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LifeTrackItrX";
 			};
 			name = Debug;
 		};
@@ -505,7 +507,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LifeTrackerX.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LifeTrackerX";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LifeTrackItrX.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LifeTrackItrX";
 			};
 			name = Release;
 		};
@@ -546,7 +548,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		49565AA02D9AC3FA00590139 /* Build configuration list for PBXProject "LifeTrackerX" */ = {
+		49565AA02D9AC3FA00590139 /* Build configuration list for PBXProject "TrackIt" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				49565AC72D9AC3FC00590139 /* Debug */,
@@ -555,7 +557,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		49565AC92D9AC3FC00590139 /* Build configuration list for PBXNativeTarget "LifeTrackerX" */ = {
+		49565AC92D9AC3FC00590139 /* Build configuration list for PBXNativeTarget "TrackIt" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				49565ACA2D9AC3FC00590139 /* Debug */,
@@ -564,7 +566,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		49565ACC2D9AC3FC00590139 /* Build configuration list for PBXNativeTarget "LifeTrackerXTests" */ = {
+		49565ACC2D9AC3FC00590139 /* Build configuration list for PBXNativeTarget "TrackItTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				49565ACD2D9AC3FC00590139 /* Debug */,
@@ -573,7 +575,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		49565ACF2D9AC3FC00590139 /* Build configuration list for PBXNativeTarget "LifeTrackerXUITests" */ = {
+		49565ACF2D9AC3FC00590139 /* Build configuration list for PBXNativeTarget "TrackItUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				49565AD02D9AC3FC00590139 /* Debug */,

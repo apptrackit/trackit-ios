@@ -1,7 +1,7 @@
 import SwiftUI
 import HealthKit
 
-struct SettingsView: View {
+struct AccountView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var healthManager = HealthManager()
     @ObservedObject var historyManager: StatsHistoryManager
@@ -19,15 +19,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section(header: Text("Data Management")) {
-                    Button(action: {
-                        showExportSheet = true
-                    }) {
-                        Label("Export Data", systemImage: "square.and.arrow.up")
-                    }
-                }
-                
-                Section(header: Text("Health Data")) {
+                Section(header: Text("Health & Data")) {
                     Button(action: {
                         showHealthAccessSheet = true
                     }) {
@@ -56,19 +48,7 @@ struct SettingsView: View {
                                 Text("Not Available")
                                     .foregroundColor(.gray)
                             }
-                            Image(systemName: "chevron.right")
-                                .foregroundColor(.gray)
-                                .font(.caption)
                         }
-                    }
-                }
-                
-                Section(header: Text("Account")) {
-                    Button(action: {
-                        // Sign out action
-                    }) {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                            .foregroundColor(.red)
                     }
                 }
                 
@@ -79,6 +59,14 @@ struct SettingsView: View {
                     
                     NavigationLink(destination: Text("Units Settings")) {
                         Label("Units", systemImage: "ruler")
+                    }
+                }
+                
+                Section(header: Text("Data Management")) {
+                    Button(action: {
+                        showExportSheet = true
+                    }) {
+                        Label("Export Data", systemImage: "square.and.arrow.up")
                     }
                 }
                 
@@ -98,8 +86,17 @@ struct SettingsView: View {
                             .foregroundColor(.gray)
                     }
                 }
+                
+                Section {
+                    Button(action: {
+                        // Sign out action
+                    }) {
+                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                            .foregroundColor(.red)
+                    }
+                }
             }
-            .navigationTitle("Settings")
+            .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -113,6 +110,73 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showExportSheet) {
                 ExportDataView(historyManager: historyManager)
+            }
+        }
+    }
+}
+
+// Placeholder views for new features
+struct ProfileEditView: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                Section(header: Text("Personal Information")) {
+                    TextField("Name", text: .constant(""))
+                    TextField("Email", text: .constant(""))
+                    DatePicker("Birth Date", selection: .constant(Date()), displayedComponents: .date)
+                }
+                
+                Section(header: Text("Goals")) {
+                    TextField("Target Weight", text: .constant(""))
+                    TextField("Target Body Fat", text: .constant(""))
+                }
+            }
+            .navigationTitle("Edit Profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct NotificationsSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                Section(header: Text("Reminders")) {
+                    Toggle("Daily Weight Reminder", isOn: .constant(true))
+                    Toggle("Weekly Progress Report", isOn: .constant(true))
+                    Toggle("Goal Achievement Alerts", isOn: .constant(true))
+                }
+                
+                Section(header: Text("Measurement Reminders")) {
+                    Toggle("Weight Tracking", isOn: .constant(true))
+                    Toggle("Body Measurements", isOn: .constant(true))
+                    Toggle("Progress Photos", isOn: .constant(true))
+                }
+            }
+            .navigationTitle("Notifications")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
             }
         }
     }
@@ -353,6 +417,9 @@ struct HealthAccessView: View {
     
     private func clearAppleHealthData() {
         isLoading = true
+        
+        // Clear the HealthKit sample map
+        healthManager.clearHealthKitSampleMap()
         
         // Only remove entries that were imported from Apple Health
         historyManager.clearEntries(from: .appleHealth)

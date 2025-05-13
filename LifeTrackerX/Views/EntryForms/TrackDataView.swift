@@ -18,14 +18,18 @@ struct TrackDataView: View {
                         .foregroundColor(.white)
                         .padding()
                     
-                    Picker("Select Data Type", selection: $selectedType) {
-                        ForEach(StatType.allCases.filter { !$0.isCalculated }) { type in
-                            Text(type.title).tag(type)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(StatType.allCases.filter { !$0.isCalculated }) { type in
+                                MeasurementTypeButton(
+                                    type: type,
+                                    isSelected: selectedType == type,
+                                    action: { selectedType = type }
+                                )
+                            }
                         }
+                        .padding(.horizontal)
                     }
-                    .pickerStyle(SegmentedPickerStyle())
-                    .padding()
-                    .colorScheme(.dark)
                     
                     VStack(alignment: .leading) {
                         Text("\(selectedType.title) (\(selectedType.unit))")
@@ -84,5 +88,39 @@ struct TrackDataView: View {
         let entry = StatEntry(date: date, value: valueDouble, type: selectedType)
         historyManager.addEntry(entry)
         dismiss()
+    }
+}
+
+struct MeasurementTypeButton: View {
+    let type: StatType
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Spacer()
+                    .frame(height: 4)  // Add small top spacing
+                
+                Image(systemName: type.iconName)
+                    .font(.system(size: 24))
+                    .frame(width: 32, height: 32)
+                    .foregroundColor(isSelected ? .white : .gray)
+                
+                Text(type.title)
+                    .font(.system(size: 12))
+                    .foregroundColor(isSelected ? .white : .gray)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(height: 32)
+                
+                Spacer()
+                    .frame(height: 4)  // Add small bottom spacing
+            }
+            .frame(width: 80, height: 80)
+            .background(isSelected ? Color.blue : Color(red: 0.11, green: 0.11, blue: 0.12))
+            .cornerRadius(10)
+        }
     }
 }
