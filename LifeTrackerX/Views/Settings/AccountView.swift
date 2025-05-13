@@ -418,6 +418,9 @@ struct HealthAccessView: View {
     private func clearAppleHealthData() {
         isLoading = true
         
+        // Clear the HealthKit sample map
+        healthManager.clearHealthKitSampleMap()
+        
         // Only remove entries that were imported from Apple Health
         historyManager.clearEntries(from: .appleHealth)
         

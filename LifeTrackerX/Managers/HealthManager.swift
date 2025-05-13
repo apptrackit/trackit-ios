@@ -31,6 +31,9 @@ class HealthManager: ObservableObject {
         HKObjectType.quantityType(forIdentifier: .waistCircumference)!
     ]
     
+    // Add a dictionary to track Apple Health sample UUIDs
+    private var healthKitSampleMap: [UUID: String] = [:]
+    
     init() {
         checkHealthDataAvailability()
         setupPeriodicSync()
@@ -204,10 +207,7 @@ class HealthManager: ObservableObject {
             return
         }
         
-        // Create a predicate with no time restrictions to get ALL data
         let predicate = HKQuery.predicateForSamples(withStart: Date.distantPast, end: Date(), options: .strictEndDate)
-        
-        // Sort by date, oldest first
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
         
         let query = HKSampleQuery(
@@ -227,11 +227,11 @@ class HealthManager: ObservableObject {
                     return
                 }
                 
-                guard let samples = samples as? [HKQuantitySample], !samples.isEmpty else {
+                guard let samples = samples as? [HKQuantitySample] else {
                     DispatchQueue.main.async {
                         print("No weight samples found")
                         self.fetchingStatus = "No weight samples found"
-                        completion(true) // Still return true even if no data found
+                        completion(true)
                     }
                     return
                 }
@@ -239,38 +239,7 @@ class HealthManager: ObservableObject {
                 DispatchQueue.main.async {
                     print("Fetched \(samples.count) weight samples")
                     self.fetchingStatus = "Fetched \(samples.count) weight samples"
-                    
-                    var addedCount = 0
-                    for sample in samples {
-                        // Skip if the sample came from our app
-                        if let metadata = sample.metadata, 
-                           let source = metadata["source"] as? String, 
-                           source == "LifeTrackerX" {
-                            print("⏭️ Skipping weight sample that originated from LifeTrackerX")
-                            continue
-                        }
-                        
-                        let weightInKg = sample.quantity.doubleValue(for: HKUnit.gramUnit(with: .kilo))
-                        let entry = StatEntry(
-                            date: sample.startDate,
-                            value: weightInKg,
-                            type: .weight,
-                            source: .appleHealth
-                        )
-                        historyManager.addEntry(entry)
-                        addedCount += 1
-                        
-                        // Debug first sample
-                        if addedCount == 1 {
-                            print("Weight sample: \(weightInKg) kg on \(sample.startDate.formatted())")
-                        }
-                    }
-                    
-                    print("Added \(addedCount) weight entries to history")
-                    self.fetchingStatus = "Added \(addedCount) weight entries to history"
-                    // Force history manager to notify its subscribers
-                    historyManager.triggerUpdate()
-                    completion(true)
+                    self.syncWithHealthKit(historyManager: historyManager, type: .weight, samples: samples, completion: completion)
                 }
             }
         )
@@ -308,11 +277,11 @@ class HealthManager: ObservableObject {
                     return
                 }
                 
-                guard let samples = samples as? [HKQuantitySample], !samples.isEmpty else {
+                guard let samples = samples as? [HKQuantitySample] else {
                     DispatchQueue.main.async {
                         print("No height samples found")
                         self.fetchingStatus = "No height samples found"
-                        completion(true) // Still return true even if no data found
+                        completion(true)
                     }
                     return
                 }
@@ -320,33 +289,7 @@ class HealthManager: ObservableObject {
                 DispatchQueue.main.async {
                     print("Fetched \(samples.count) height samples")
                     self.fetchingStatus = "Fetched \(samples.count) height samples"
-                    
-                    var addedCount = 0
-                    for sample in samples {
-                        // Skip if the sample came from our app
-                        if let metadata = sample.metadata, 
-                           let source = metadata["source"] as? String, 
-                           source == "LifeTrackerX" {
-                            print("⏭️ Skipping height sample that originated from LifeTrackerX")
-                            continue
-                        }
-                        
-                        let heightInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
-                        let entry = StatEntry(
-                            date: sample.startDate,
-                            value: heightInCm,
-                            type: .height,
-                            source: .appleHealth
-                        )
-                        historyManager.addEntry(entry)
-                        addedCount += 1
-                    }
-                    
-                    print("Added \(addedCount) height entries to history")
-                    self.fetchingStatus = "Added \(addedCount) height entries to history"
-                    // Force history manager to notify its subscribers
-                    historyManager.triggerUpdate()
-                    completion(true)
+                    self.syncWithHealthKit(historyManager: historyManager, type: .height, samples: samples, completion: completion)
                 }
             }
         )
@@ -383,11 +326,11 @@ class HealthManager: ObservableObject {
                 return
             }
             
-            guard let samples = samples as? [HKQuantitySample], !samples.isEmpty else {
+            guard let samples = samples as? [HKQuantitySample] else {
                 DispatchQueue.main.async {
                     print("No body fat samples found")
                     self.fetchingStatus = "No body fat samples found"
-                    completion(true) // Still return true even if no data found
+                    completion(true)
                 }
                 return
             }
@@ -395,35 +338,7 @@ class HealthManager: ObservableObject {
             DispatchQueue.main.async {
                 print("Fetched \(samples.count) body fat samples")
                 self.fetchingStatus = "Fetched \(samples.count) body fat samples"
-                
-                var addedCount = 0
-                for sample in samples {
-                    // Skip if the sample came from our app
-                    if let metadata = sample.metadata, 
-                       let source = metadata["source"] as? String, 
-                       source == "LifeTrackerX" {
-                        print("⏭️ Skipping body fat sample that originated from LifeTrackerX")
-                        continue
-                    }
-                    
-                    let bodyFatDecimal = sample.quantity.doubleValue(for: HKUnit.percent())
-                    // Convert from decimal (0.15) to percentage (15%)
-                    let bodyFatPercentage = bodyFatDecimal * 100.0
-                    let entry = StatEntry(
-                        date: sample.startDate,
-                        value: bodyFatPercentage,
-                        type: .bodyFat,
-                        source: .appleHealth
-                    )
-                    historyManager.addEntry(entry)
-                    addedCount += 1
-                }
-                
-                print("Added \(addedCount) body fat entries to history")
-                self.fetchingStatus = "Added \(addedCount) body fat entries to history"
-                // Force history manager to notify its subscribers
-                historyManager.triggerUpdate()
-                completion(true)
+                self.syncWithHealthKit(historyManager: historyManager, type: .bodyFat, samples: samples, completion: completion)
             }
         }
         healthStore.execute(query)
@@ -459,11 +374,11 @@ class HealthManager: ObservableObject {
                 return
             }
             
-            guard let samples = samples as? [HKQuantitySample], !samples.isEmpty else {
+            guard let samples = samples as? [HKQuantitySample] else {
                 DispatchQueue.main.async {
                     print("No waist samples found")
                     self.fetchingStatus = "No waist samples found"
-                    completion(true) // Still return true even if no data found
+                    completion(true)
                 }
                 return
             }
@@ -471,36 +386,100 @@ class HealthManager: ObservableObject {
             DispatchQueue.main.async {
                 print("Fetched \(samples.count) waist samples")
                 self.fetchingStatus = "Fetched \(samples.count) waist samples"
-                
-                var addedCount = 0
-                for sample in samples {
-                    // Skip if the sample came from our app
-                    if let metadata = sample.metadata, 
-                       let source = metadata["source"] as? String, 
-                       source == "LifeTrackerX" {
-                        print("⏭️ Skipping waist sample that originated from LifeTrackerX")
-                        continue
-                    }
-                    
-                    let waistInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
-                    let entry = StatEntry(
-                        date: sample.startDate,
-                        value: waistInCm,
-                        type: .waist,
-                        source: .appleHealth
-                    )
-                    historyManager.addEntry(entry)
-                    addedCount += 1
-                }
-                
-                print("Added \(addedCount) waist entries to history")
-                self.fetchingStatus = "Added \(addedCount) waist entries to history"
-                // Force history manager to notify its subscribers
-                historyManager.triggerUpdate()
-                completion(true)
+                self.syncWithHealthKit(historyManager: historyManager, type: .waist, samples: samples, completion: completion)
             }
         }
         healthStore.execute(query)
+    }
+    
+    // Function to get the HealthKit sample UUID for a StatEntry
+    func getHealthKitSampleUUID(for entry: StatEntry) -> String? {
+        return healthKitSampleMap[entry.id]
+    }
+    
+    // Function to sync with HealthKit and handle deletions
+    private func syncWithHealthKit(historyManager: StatsHistoryManager, type: StatType, samples: [HKQuantitySample], completion: @escaping (Bool) -> Void) {
+        // Get all existing entries of this type from Apple Health
+        let existingEntries = historyManager.getEntries(for: type, source: .appleHealth)
+        
+        // Create a set of sample UUIDs from HealthKit
+        let currentSampleUUIDs = Set(samples.map { $0.uuid.uuidString })
+        
+        // Find entries that need to be deleted (exist in our app but not in HealthKit)
+        let entriesToDelete = existingEntries.filter { entry in
+            if let sampleUUID = getHealthKitSampleUUID(for: entry) {
+                return !currentSampleUUIDs.contains(sampleUUID)
+            }
+            return true // If we don't have a sample UUID, delete it
+        }
+        
+        // Delete entries that no longer exist in HealthKit
+        for entry in entriesToDelete {
+            print("🗑️ Deleting entry that no longer exists in HealthKit: \(entry.type) from \(entry.date)")
+            historyManager.removeEntry(entry)
+        }
+        
+        // Add or update entries from HealthKit
+        var addedCount = 0
+        for sample in samples {
+            // Skip if the sample came from our app
+            if let metadata = sample.metadata,
+               let source = metadata["source"] as? String,
+               source == "LifeTrackerX" {
+                print("⏭️ Skipping sample that originated from LifeTrackerX")
+                continue
+            }
+            
+            // Convert the sample to a StatEntry
+            let entry: StatEntry
+            switch type {
+            case .weight:
+                let weightInKg = sample.quantity.doubleValue(for: HKUnit.gramUnit(with: .kilo))
+                entry = StatEntry(
+                    date: sample.startDate,
+                    value: weightInKg,
+                    type: .weight,
+                    source: .appleHealth
+                )
+            case .height:
+                let heightInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
+                entry = StatEntry(
+                    date: sample.startDate,
+                    value: heightInCm,
+                    type: .height,
+                    source: .appleHealth
+                )
+            case .bodyFat:
+                let bodyFatDecimal = sample.quantity.doubleValue(for: HKUnit.percent())
+                let bodyFatPercentage = bodyFatDecimal * 100.0
+                entry = StatEntry(
+                    date: sample.startDate,
+                    value: bodyFatPercentage,
+                    type: .bodyFat,
+                    source: .appleHealth
+                )
+            case .waist:
+                let waistInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
+                entry = StatEntry(
+                    date: sample.startDate,
+                    value: waistInCm,
+                    type: .waist,
+                    source: .appleHealth
+                )
+            default:
+                continue
+            }
+            
+            // Store the HealthKit sample UUID
+            healthKitSampleMap[entry.id] = sample.uuid.uuidString
+            
+            // Add or update the entry
+            historyManager.addEntry(entry)
+            addedCount += 1
+        }
+        
+        print("📊 Sync completed for \(type): Added/Updated \(addedCount) entries, Deleted \(entriesToDelete.count) entries")
+        completion(true)
     }
     
     // Function to save a manual entry to HealthKit
@@ -663,5 +642,10 @@ class HealthManager: ObservableObject {
         }
         
         healthStore.execute(query)
+    }
+    
+    // Add a function to clear the sample map when disconnecting
+    func clearHealthKitSampleMap() {
+        healthKitSampleMap.removeAll()
     }
 }
