@@ -70,13 +70,6 @@ struct ContentView: View {
                     
                     // Summary Section
                     VStack(spacing: 15) {
-                        HStack {
-                            Text("Summary")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                            Spacer()
-                        }
                         
                         HStack(spacing: 15) {
                             // Weight Card
