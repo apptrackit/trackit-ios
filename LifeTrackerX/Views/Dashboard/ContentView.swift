@@ -37,6 +37,18 @@ struct ContentView: View {
         }.sorted { $0.date > $1.date }
     }
     
+    private var welcomeMessage: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 0..<12:
+            return "Good morning"
+        case 12..<17:
+            return "Good afternoon"
+        default:
+            return "Good evening"
+        }
+    }
+    
     var body: some View {
         ZStack {
             Color.black.edgesIgnoringSafeArea(.all)
@@ -47,6 +59,20 @@ struct ContentView: View {
                 }
                 
                 VStack(spacing: 20) {
+                    // Welcome Section
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(welcomeMessage)
+                            .font(.title)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                        
+                        Text(Date().formatted(date: .complete, time: .omitted))
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    
                     // Summary Section
                     VStack(spacing: 15) {
                         HStack {
@@ -296,23 +322,46 @@ struct ProgressChartView: View {
         let calendar = Calendar.current
         let now = Date()
         
+        // Get all entries first
+        let allEntries = historyManager.getEntries(for: statType)
+            .sorted { $0.date < $1.date }
+        
+        // If no entries, return empty array
+        if allEntries.isEmpty {
+            return []
+        }
+        
+        // Calculate the date range based on timeFrame
+        let startDate: Date
         switch timeFrame {
         case .weekly:
-            let weekAgo = calendar.date(byAdding: .day, value: -7, to: now)!
-            return historyManager.getEntries(for: statType)
-                .filter { $0.date >= weekAgo }
-                .sorted { $0.date < $1.date }
+            startDate = calendar.date(byAdding: .day, value: -7, to: now)!
         case .monthly:
-            let monthAgo = calendar.date(byAdding: .month, value: -1, to: now)!
-            return historyManager.getEntries(for: statType)
-                .filter { $0.date >= monthAgo }
-                .sorted { $0.date < $1.date }
+            startDate = calendar.date(byAdding: .month, value: -1, to: now)!
         case .yearly:
-            let yearAgo = calendar.date(byAdding: .year, value: -1, to: now)!
-            return historyManager.getEntries(for: statType)
-                .filter { $0.date >= yearAgo }
-                .sorted { $0.date < $1.date }
+            startDate = calendar.date(byAdding: .year, value: -1, to: now)!
         }
+        
+        // Filter entries for the selected timeFrame
+        let filteredEntries = allEntries.filter { $0.date >= startDate }
+        
+        // If no entries in the selected timeFrame, return the last 5 entries
+        if filteredEntries.isEmpty {
+            return Array(allEntries.suffix(5))
+        }
+        
+        return filteredEntries
+    }
+    
+    private var yAxisRange: ClosedRange<Double> {
+        guard !data.isEmpty else { return 0...100 }
+        
+        let values = data.map { $0.value }
+        let min = values.min() ?? 0
+        let max = values.max() ?? 100
+        let padding = (max - min) * 0.1 // 10% padding
+        
+        return (min - padding)...(max + padding)
     }
     
     var body: some View {
@@ -350,10 +399,15 @@ struct ProgressChartView: View {
                     }
                 }
                 .frame(height: 150)
+                .chartYScale(domain: yAxisRange)
                 .chartXAxis {
                     AxisMarks(values: .stride(by: .day)) { value in
                         AxisGridLine()
-                        AxisValueLabel(format: .dateTime.day())
+                        AxisValueLabel {
+                            if let date = value.as(Date.self) {
+                                Text(date.formatted(.dateTime.day().month(.abbreviated)))
+                            }
+                        }
                     }
                 }
             }
