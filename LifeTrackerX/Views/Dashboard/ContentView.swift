@@ -5,7 +5,7 @@ struct ContentView: View {
     @StateObject private var historyManager = StatsHistoryManager.shared
     @StateObject private var healthManager = HealthManager()
     @State private var showingAddEntrySheet = false
-    @State private var showingSettingsSheet = false
+    @State private var showingAccountSheet = false
     @State private var selectedTimeFrame: TimeFrame = .sixMonths
     
     // Computed properties to get latest values or nil
@@ -223,17 +223,17 @@ struct ContentView: View {
             
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: {
-                    showingSettingsSheet = true
+                    showingAccountSheet = true
                 }) {
-                    Image(systemName: "gear")
+                    Image(systemName: "person.circle")
                 }
             }
         }
         .sheet(isPresented: $showingAddEntrySheet) {
             TrackDataView(historyManager: historyManager)
         }
-        .sheet(isPresented: $showingSettingsSheet) {
-            SettingsView(historyManager: historyManager)
+        .sheet(isPresented: $showingAccountSheet) {
+            AccountView(historyManager: historyManager)
         }
         .onAppear {
             // Sync with Apple Health when the app launches
