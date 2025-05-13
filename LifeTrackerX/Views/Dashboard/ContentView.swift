@@ -6,7 +6,7 @@ struct ContentView: View {
     @StateObject private var healthManager = HealthManager()
     @State private var showingAddEntrySheet = false
     @State private var showingSettingsSheet = false
-    @State private var selectedTimeFrame: TimeFrame = .monthly
+    @State private var selectedTimeFrame: TimeFrame = .sixMonths
     
     // Computed properties to get latest values or nil
     private var weight: Double? {
