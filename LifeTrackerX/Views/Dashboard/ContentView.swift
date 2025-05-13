@@ -328,7 +328,9 @@ struct ProgressChartView: View {
         case .weekly:
             startDate = calendar.date(byAdding: .day, value: -7, to: now)!
         case .monthly:
-            startDate = calendar.date(byAdding: .month, value: -1, to: now)!
+            startDate = calendar.date(byAdding: .day, value: -30, to: now)!
+        case .sixMonths:
+            startDate = calendar.date(byAdding: .month, value: -6, to: now)!
         case .yearly:
             startDate = calendar.date(byAdding: .year, value: -1, to: now)!
         }
@@ -361,19 +363,42 @@ struct ProgressChartView: View {
             return .day
         case .monthly:
             return .day
+        case .sixMonths:
+            return .month
         case .yearly:
             return .month
         }
     }
     
+    private func monthlyAxisDates() -> [Date] {
+        // 4 evenly spaced real dates: start, 1/3, 2/3, end of last 30 days
+        let calendar = Calendar.current
+        let now = Date()
+        guard let start = calendar.date(byAdding: .day, value: -29, to: now) else { return [] }
+        let interval = 29.0 / 3.0
+        return (0...3).map { i in
+            calendar.date(byAdding: .day, value: Int(round(Double(i) * interval)), to: start)!
+        }
+    }
+    
     private func formatDate(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
         switch timeFrame {
         case .weekly:
-            return date.formatted(.dateTime.day().month(.abbreviated))
+            let weekday = calendar.component(.weekday, from: date)
+            let weekdaySymbol = calendar.veryShortWeekdaySymbols[weekday - 1]
+            return weekdaySymbol
         case .monthly:
-            return date.formatted(.dateTime.day())
+            formatter.setLocalizedDateFormatFromTemplate("MMM d")
+            return formatter.string(from: date)
+        case .sixMonths:
+            let month = calendar.component(.month, from: date)
+            return calendar.shortMonthSymbols[month - 1]
         case .yearly:
-            return date.formatted(.dateTime.month(.abbreviated))
+            let month = calendar.component(.month, from: date)
+            return String(calendar.shortMonthSymbols[month - 1].prefix(1))
         }
     }
     
@@ -403,22 +428,28 @@ struct ProgressChartView: View {
                             y: .value("Value", entry.value)
                         )
                         .foregroundStyle(Color.blue.gradient)
-                        
-                        PointMark(
-                            x: .value("Date", entry.date),
-                            y: .value("Value", entry.value)
-                        )
-                        .foregroundStyle(Color.blue)
+                        .interpolationMethod(.linear)
                     }
                 }
                 .frame(height: 150)
                 .chartYScale(domain: yAxisRange)
                 .chartXAxis {
-                    AxisMarks(values: .stride(by: getDateStride(), count: timeFrame == .monthly ? 5 : 1)) { value in
-                        AxisGridLine()
-                        AxisValueLabel {
-                            if let date = value.as(Date.self) {
-                                Text(formatDate(date))
+                    if timeFrame == .monthly {
+                        AxisMarks(values: monthlyAxisDates()) { value in
+                            AxisGridLine()
+                            AxisValueLabel {
+                                if let date = value.as(Date.self) {
+                                    Text(formatDate(date)).font(.caption)
+                                }
+                            }
+                        }
+                    } else {
+                        AxisMarks(values: .stride(by: getDateStride(), count: timeFrame == .monthly ? 7 : 1)) { value in
+                            AxisGridLine()
+                            AxisValueLabel {
+                                if let date = value.as(Date.self) {
+                                    Text(formatDate(date)).font(.caption)
+                                }
                             }
                         }
                     }
