@@ -102,7 +102,7 @@ struct AddPhotoView: View {
                                 .font(.headline)
                                 .foregroundColor(.white)
                             
-                            DatePicker("", selection: $selectedDate, displayedComponents: [.date, .hourAndMinute])
+                            DatePicker("", selection: $selectedDate, displayedComponents: [.date])
                                 .datePickerStyle(.compact)
                                 .labelsHidden()
                                 .colorScheme(.dark)
@@ -318,14 +318,28 @@ struct AddPhotoView: View {
             return
         }
         
-        // Get measurements close to this date to associate with photo
-        let measurements = photoManager.getMeasurementsAtTime(date: selectedDate, statsManager: historyManager)
-        
+        // Set the time component of the selectedDate to 23:59
+        var calendar = Calendar.current
+        calendar.timeZone = TimeZone.current // Ensure correct time zone handling
+        let components = calendar.dateComponents([.year, .month, .day], from: selectedDate)
+
+        // Create a new Date with the same year, month, day, but with time set to 23:59:59
+        guard let dateAtEndOfDay = calendar.date(from: DateComponents(
+            year: components.year,
+            month: components.month,
+            day: components.day,
+            hour: 23,
+            minute: 59,
+            second: 59
+        )) else {
+            print("Error creating date at end of day")
+            return
+        }
+
         let photo = ProgressPhoto(
-            date: selectedDate,
+            date: dateAtEndOfDay, // Use the date with time set to 23:59:59
             categories: Array(selectedCategories),
             imageData: imageData,
-            associatedMeasurements: measurements,
             notes: notes.isEmpty ? nil : notes
         )
         
@@ -446,7 +460,7 @@ struct EditPhotoView: View {
                                 .font(.headline)
                                 .foregroundColor(.white)
                             
-                            DatePicker("", selection: $selectedDate, displayedComponents: [.date, .hourAndMinute])
+                            DatePicker("", selection: $selectedDate, displayedComponents: [.date])
                                 .datePickerStyle(.compact)
                                 .labelsHidden()
                                 .colorScheme(.dark)
@@ -661,15 +675,11 @@ struct EditPhotoView: View {
             }
         }
         
-        // Get measurements close to this date to associate with photo
-        let measurements = photoManager.getMeasurementsAtTime(date: selectedDate, statsManager: historyManager)
-        
         let updatedPhoto = ProgressPhoto(
             id: photo.id,
             date: selectedDate,
             categories: Array(selectedCategories),
             imageData: imageData,
-            associatedMeasurements: measurements,
             notes: notes.isEmpty ? nil : notes
         )
         
@@ -775,10 +785,12 @@ struct MeasurementSummaryView: View {
         let relevantTypes: [StatType] = [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder, .glutes]
         
         for type in relevantTypes {
-            if let entry = historyManager.getEntries(for: type)
-                .filter({ $0.date <= date })
-                .sorted(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })
-                .first {
+            // Get all entries for this type up to the photo date
+            let entries = historyManager.getEntries(for: type)
+                .filter { $0.date <= date } // Get entries up to the photo date
+                .sorted { $0.date > $1.date } // Sort by date descending
+            
+            if let entry = entries.first {
                 result[type] = entry.value
             }
         }

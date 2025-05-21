@@ -282,19 +282,16 @@ class StatsHistoryManager: ObservableObject {
     }
     
     func getEntriesAt(date: Date) -> [StatEntry] {
-        let relevantTypes: [StatType] = [.weight, .height, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder]
         var result: [StatEntry] = []
         
+        let relevantTypes: [StatType] = [.weight, .height, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder, .glutes]
+        
         for type in relevantTypes {
-            if let entry = getEntries(for: type)
-                .filter({ $0.date <= date })
-                .sorted(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })
+            // Find the most recent entry for this type on or before the given date
+            if let latestEntry = entries.filter({ $0.type == type && $0.date <= date })
+                .sorted(by: { $0.date > $1.date })
                 .first {
-                // Only include if the entry is within 7 days of the given date
-                let dayDifference = abs(Calendar.current.dateComponents([.day], from: date, to: entry.date).day ?? 0)
-                if dayDifference <= 7 {
-                    result.append(entry)
-                }
+                result.append(latestEntry)
             }
         }
         

@@ -44,7 +44,7 @@ struct PhotoHistoryView: View {
                                 // Photos grid
                                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                                     ForEach(photos) { photo in
-                                        HistoryPhotoThumbnail(photo: photo) {
+                                        HistoryPhotoThumbnail(photo: photo, historyManager: historyManager) {
                                             selectedPhoto = photo
                                         }
                                     }
@@ -92,7 +92,15 @@ struct HistoryDateGroupHeader: View {
 
 struct HistoryPhotoThumbnail: View {
     let photo: ProgressPhoto
+    @ObservedObject var historyManager: StatsHistoryManager
     let action: () -> Void
+    
+    private var weight: Double? {
+        historyManager.getEntries(for: .weight)
+            .filter { $0.date <= photo.date }
+            .sorted { $0.date > $1.date }
+            .first?.value
+    }
     
     var body: some View {
         Button(action: action) {
@@ -129,7 +137,7 @@ struct HistoryPhotoThumbnail: View {
                         }
                     }
                     
-                    if let weight = photo.associatedMeasurements?.first(where: { $0.type == .weight })?.value {
+                    if let weight = weight {
                         Text("\(String(format: "%.1f", weight)) kg")
                             .font(.subheadline)
                             .fontWeight(.semibold)

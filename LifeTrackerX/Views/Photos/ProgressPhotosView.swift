@@ -18,124 +18,33 @@ struct ProgressPhotosView: View {
             
             ScrollView {
                 VStack(spacing: 12) {
-                    // Categories scroll view
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(PhotoCategory.allCases) { category in
-                                CategoryButton(
-                                    category: category,
-                                    isSelected: selectedCategory == category,
-                                    action: {
-                                        withAnimation {
-                                            if selectedCategory == category {
-                                                selectedCategory = nil
-                                            } else {
-                                                selectedCategory = category
-                                            }
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                        .padding(.horizontal, 8)
-                    }
-                    .padding(.top, 8)
+                    CategoryScrollView(selectedCategory: $selectedCategory)
                     
                     // Before/After comparison cards
                     VStack(spacing: 10) {
                         if let category = selectedCategory {
-                            let photos = photoManager.getPhotos(for: category)
-                            
-                            if photos.count >= 1 {
-                                // We have at least one photo for comparison
-                                ComparisonCard(
-                                    photoManager: photoManager,
-                                    category: category,
-                                    historyManager: historyManager
-                                )
-                            } else {
-                                EmptyStateView(category: category)
-                                    .padding(.horizontal, 4)
-                            }
+                            CategoryComparisonView(
+                                category: category,
+                                photoManager: photoManager,
+                                historyManager: historyManager
+                            )
                         } else {
-                            // Summary grid of latest photos per category
-                            LazyVGrid(columns: columns, spacing: 8) {
-                                let latestByCategory = photoManager.getLatestPhotosByCategory()
-                                
-                                ForEach(PhotoCategory.allCases) { category in
-                                    if let photo = latestByCategory[category] {
-                                        CategoryPhotoCard(
-                                            category: category,
-                                            photo: photo,
-                                            action: {
-                                                selectedCategory = category
-                                            }
-                                        )
-                                    } else {
-                                        CategoryEmptyCard(
-                                            category: category,
-                                            action: {
-                                                selectedCategory = category
-                                                showingAddPhotoSheet = true
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 8)
+                            CategoryGrid(
+                                photoManager: photoManager,
+                                selectedCategory: $selectedCategory,
+                                showingAddPhotoSheet: $showingAddPhotoSheet
+                            )
                         }
                     }
                     
                     // Photo history if category is selected
                     if let category = selectedCategory {
-                        Spacer(minLength: 25)
-                        
-                        // Section header
-                        HStack {
-                            Text("Photo History")
-                                .font(.title3)
-                                .foregroundColor(.white)
-                            
-                            Spacer()
-                            
-                            HStack(spacing: 5) {
-                                Image(systemName: "photo.stack.fill")
-                                    .font(.subheadline)
-                                    .foregroundColor(.gray)
-                                
-                                Text("\(photoManager.getPhotos(for: category).count) photos")
-                                    .font(.subheadline)
-                                    .foregroundColor(.gray)
-                            }
-                        }
-                        .padding(.horizontal)
-                        
-                        let groupedPhotos = photoManager.getPhotosByDate(category: category)
-                        
-                        if groupedPhotos.isEmpty {
-                            EmptyStateView(category: category)
-                                .padding(.horizontal, 4)
-                        } else {
-                            // Group by date
-                            VStack(spacing: 16) {
-                                ForEach(groupedPhotos.keys.sorted(by: >), id: \.self) { date in
-                                    if let photos = groupedPhotos[date] {
-                                        HistoryDateGroupHeader(date: date)
-                                            .padding(.horizontal)
-                                        
-                                        // Photos grid
-                                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                                            ForEach(photos) { photo in
-                                                HistoryPhotoThumbnail(photo: photo) {
-                                                    selectedPhoto = photo
-                                                }
-                                            }
-                                        }
-                                        .padding(.horizontal)
-                                    }
-                                }
-                            }
-                        }
+                        PhotoHistorySection(
+                            category: category,
+                            photoManager: photoManager,
+                            historyManager: historyManager,
+                            selectedPhoto: $selectedPhoto
+                        )
                     }
                 }
                 .padding(.bottom, 20)
@@ -183,6 +92,160 @@ struct ProgressPhotosView: View {
                 photoManager: photoManager,
                 historyManager: historyManager
             )
+        }
+    }
+}
+
+// MARK: - Category Scroll View
+struct CategoryScrollView: View {
+    @Binding var selectedCategory: PhotoCategory?
+    
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(PhotoCategory.allCases) { category in
+                    CategoryButton(
+                        category: category,
+                        isSelected: selectedCategory == category,
+                        action: {
+                            withAnimation {
+                                if selectedCategory == category {
+                                    selectedCategory = nil
+                                } else {
+                                    selectedCategory = category
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+            .padding(.horizontal, 8)
+        }
+        .padding(.top, 8)
+    }
+}
+
+// MARK: - Category Comparison View
+struct CategoryComparisonView: View {
+    let category: PhotoCategory
+    let photoManager: ProgressPhotoManager
+    let historyManager: StatsHistoryManager
+    
+    var body: some View {
+        let photos = photoManager.getPhotos(for: category)
+        
+        if photos.count >= 1 {
+            ComparisonCard(
+                photoManager: photoManager,
+                category: category,
+                historyManager: historyManager
+            )
+        } else {
+            EmptyStateView(category: category)
+                .padding(.horizontal, 4)
+        }
+    }
+}
+
+// MARK: - Category Grid
+struct CategoryGrid: View {
+    let photoManager: ProgressPhotoManager
+    @Binding var selectedCategory: PhotoCategory?
+    @Binding var showingAddPhotoSheet: Bool
+    
+    private let columns = [
+        GridItem(.flexible()),
+        GridItem(.flexible())
+    ]
+    
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 8) {
+            let latestByCategory = photoManager.getLatestPhotosByCategory()
+            
+            ForEach(PhotoCategory.allCases) { category in
+                if let photo = latestByCategory[category] {
+                    CategoryPhotoCard(
+                        category: category,
+                        photo: photo,
+                        action: {
+                            selectedCategory = category
+                        }
+                    )
+                } else {
+                    CategoryEmptyCard(
+                        category: category,
+                        action: {
+                            selectedCategory = category
+                            showingAddPhotoSheet = true
+                        }
+                    )
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+    }
+}
+
+// MARK: - Photo History Section
+struct PhotoHistorySection: View {
+    let category: PhotoCategory
+    let photoManager: ProgressPhotoManager
+    let historyManager: StatsHistoryManager
+    @Binding var selectedPhoto: ProgressPhoto?
+    
+    var body: some View {
+        VStack {
+            Spacer(minLength: 25)
+            
+            // Section header
+            HStack {
+                Text("Photo History")
+                    .font(.title3)
+                    .foregroundColor(.white)
+                
+                Spacer()
+                
+                HStack(spacing: 5) {
+                    Image(systemName: "photo.stack.fill")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                    
+                    Text("\(photoManager.getPhotos(for: category).count) photos")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                }
+            }
+            .padding(.horizontal)
+            
+            let groupedPhotos = photoManager.getPhotosByDate(category: category)
+            
+            if groupedPhotos.isEmpty {
+                EmptyStateView(category: category)
+                    .padding(.horizontal, 4)
+            } else {
+                // Group by date
+                VStack(spacing: 16) {
+                    ForEach(groupedPhotos.keys.sorted(by: >), id: \.self) { date in
+                        if let photos = groupedPhotos[date] {
+                            HistoryDateGroupHeader(date: date)
+                                .padding(.horizontal)
+                            
+                            // Photos grid
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                                ForEach(photos) { photo in
+                                    HistoryPhotoThumbnail(
+                                        photo: photo,
+                                        historyManager: historyManager
+                                    ) {
+                                        selectedPhoto = photo
+                                    }
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+                }
+            }
         }
     }
 }
