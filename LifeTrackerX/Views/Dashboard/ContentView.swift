@@ -333,6 +333,8 @@ struct ProgressChartView: View {
             startDate = calendar.date(byAdding: .month, value: -6, to: now)!
         case .yearly:
             startDate = calendar.date(byAdding: .year, value: -1, to: now)!
+        case .allTime:
+            startDate = .distantPast
         }
         
         // Filter entries for the selected timeFrame
@@ -367,6 +369,8 @@ struct ProgressChartView: View {
             return .month
         case .yearly:
             return .month
+        case .allTime:
+            return .year
         }
     }
     
@@ -399,6 +403,9 @@ struct ProgressChartView: View {
         case .yearly:
             let month = calendar.component(.month, from: date)
             return String(calendar.shortMonthSymbols[month - 1].prefix(1))
+        case .allTime:
+            formatter.setLocalizedDateFormatFromTemplate("yyyy")
+            return formatter.string(from: date)
         }
     }
     
@@ -440,6 +447,47 @@ struct ProgressChartView: View {
                             AxisValueLabel {
                                 if let date = value.as(Date.self) {
                                     Text(formatDate(date)).font(.caption)
+                                }
+                            }
+                        }
+                    } else if timeFrame == .allTime {
+                        // For all time view, show first year, last year, and evenly spaced years in between
+                        let calendar = Calendar.current
+                        let allEntries = historyManager.getEntries(for: statType)
+                            .sorted { $0.date < $1.date }
+                        
+                        if let firstDate = allEntries.first?.date,
+                           let lastDate = allEntries.last?.date {
+                            let firstYear = calendar.component(.year, from: firstDate)
+                            let lastYear = calendar.component(.year, from: lastDate)
+                            let yearRange = lastYear - firstYear
+                            
+                            // If less than 3 years, show all years
+                            if yearRange <= 2 {
+                                AxisMarks(values: .stride(by: .year)) { value in
+                                    AxisGridLine()
+                                    AxisValueLabel {
+                                        if let date = value.as(Date.self) {
+                                            Text(formatDate(date)).font(.caption)
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Show first year, last year, and one in the middle
+                                let middleYear = firstYear + (yearRange / 2)
+                                let dates = [
+                                    calendar.date(from: DateComponents(year: firstYear))!,
+                                    calendar.date(from: DateComponents(year: middleYear))!,
+                                    calendar.date(from: DateComponents(year: lastYear))!
+                                ]
+                                
+                                AxisMarks(values: dates) { value in
+                                    AxisGridLine()
+                                    AxisValueLabel {
+                                        if let date = value.as(Date.self) {
+                                            Text(formatDate(date)).font(.caption)
+                                        }
+                                    }
                                 }
                             }
                         }

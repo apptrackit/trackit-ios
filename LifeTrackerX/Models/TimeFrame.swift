@@ -5,4 +5,5 @@ enum TimeFrame: String, CaseIterable {
     case monthly = "M"
     case sixMonths = "6M"
     case yearly = "Y"
+    case allTime = "All"
 } 
