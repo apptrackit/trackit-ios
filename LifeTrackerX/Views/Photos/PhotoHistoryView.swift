@@ -269,7 +269,7 @@ struct PhotoDetailView: View {
     
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM d, yyyy 'at' h:mm a"
+        formatter.dateFormat = "MMMM d, yyyy"
         return formatter.string(from: date)
     }
 } 
