@@ -32,24 +32,6 @@ struct MainTabView: View {
                 Label("Photos", systemImage: "photo.fill")
             }
             .tag(2)
-            
-            // Nutrition Tab
-            NavigationStack {
-                PlaceholderView(title: "Nutrition")
-            }
-            .tabItem {
-                Label("Nutrition", systemImage: "fork.knife")
-            }
-            .tag(3)
-            
-            // Workout Tab
-            NavigationStack {
-                PlaceholderView(title: "Workout")
-            }
-            .tabItem {
-                Label("Workout", systemImage: "dumbbell.fill")
-            }
-            .tag(4)
         }
         .accentColor(.green)
     }

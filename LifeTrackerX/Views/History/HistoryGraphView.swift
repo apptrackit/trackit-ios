@@ -31,6 +31,9 @@ struct HistoryGraphView: View {
             return historyManager.getEntries(for: statType)
                 .filter { $0.date >= yearAgo }
                 .sorted(by: { $0.date < $1.date })
+        case .allTime:
+            return historyManager.getEntries(for: statType)
+                .sorted(by: { $0.date < $1.date })
         }
     }
     
@@ -88,6 +91,8 @@ struct HistoryGraphView: View {
             return .dateTime.day()
         case .sixMonths, .yearly:
             return .dateTime.month(.abbreviated)
+        case .allTime:
+            return .dateTime.year()
         }
     }
     

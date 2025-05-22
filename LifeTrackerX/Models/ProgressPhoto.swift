@@ -47,22 +47,21 @@ struct ProgressPhoto: Identifiable, Codable {
     var date: Date
     var categories: [PhotoCategory]
     var imageData: Data
-    var associatedMeasurements: [StatEntry]?
     var notes: String?
     
     // Define the CodingKeys to handle both old and new format
     enum CodingKeys: String, CodingKey {
-        case id, date, imageData, associatedMeasurements, notes
+        case id, date, imageData, notes
         case categories
         case category // For backward compatibility
+        case associatedMeasurements // For backward compatibility
     }
     
-    init(id: UUID = UUID(), date: Date = Date(), categories: [PhotoCategory], imageData: Data, associatedMeasurements: [StatEntry]? = nil, notes: String? = nil) {
+    init(id: UUID = UUID(), date: Date = Date(), categories: [PhotoCategory], imageData: Data, notes: String? = nil) {
         self.id = id
         self.date = date
         self.categories = categories
         self.imageData = imageData
-        self.associatedMeasurements = associatedMeasurements
         self.notes = notes
     }
     
@@ -72,7 +71,6 @@ struct ProgressPhoto: Identifiable, Codable {
         id = try container.decode(UUID.self, forKey: .id)
         date = try container.decode(Date.self, forKey: .date)
         imageData = try container.decode(Data.self, forKey: .imageData)
-        associatedMeasurements = try container.decodeIfPresent([StatEntry].self, forKey: .associatedMeasurements)
         notes = try container.decodeIfPresent(String.self, forKey: .notes)
         
         // Handle both old and new format
@@ -89,7 +87,6 @@ struct ProgressPhoto: Identifiable, Codable {
         try container.encode(id, forKey: .id)
         try container.encode(date, forKey: .date)
         try container.encode(imageData, forKey: .imageData)
-        try container.encodeIfPresent(associatedMeasurements, forKey: .associatedMeasurements)
         try container.encodeIfPresent(notes, forKey: .notes)
         try container.encode(categories, forKey: .categories)
     }

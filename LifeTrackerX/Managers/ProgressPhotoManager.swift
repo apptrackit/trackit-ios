@@ -122,14 +122,16 @@ class ProgressPhotoManager: ObservableObject {
     func getMeasurementsAtTime(date: Date, statsManager: StatsHistoryManager) -> [StatEntry] {
         var measurements: [StatEntry] = []
         
-        // Get key measurements close to the photo date
+        // Get key measurements up to this date
         let relevantTypes: [StatType] = [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder, .glutes]
         
         for type in relevantTypes {
-            if let entry = statsManager.getEntries(for: type)
-                .filter({ $0.date <= date })
-                .sorted(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })
-                .first {
+            // Get all entries for this type up to the photo date
+            let entries = statsManager.getEntries(for: type)
+                .filter { $0.date <= date } // Get entries up to the photo date
+                .sorted { $0.date > $1.date } // Sort by date descending
+            
+            if let entry = entries.first {
                 measurements.append(entry)
             }
         }

@@ -3,7 +3,7 @@ import SwiftUI
 struct ComparisonCard: View {
     @ObservedObject var photoManager: ProgressPhotoManager
     let category: PhotoCategory
-    let historyManager: StatsHistoryManager
+    @ObservedObject var historyManager: StatsHistoryManager
     
     @State private var leftPhotoIndex: Int = 0
     @State private var rightPhotoIndex: Int = 1
@@ -20,29 +20,6 @@ struct ComparisonCard: View {
     
     private var rightPhoto: ProgressPhoto? {
         categoryPhotos.indices.contains(rightPhotoIndex) ? categoryPhotos[rightPhotoIndex] : nil
-    }
-    
-    // Need to add these computed properties to access weight measurements
-    private var oldMeasurements: [StatType: Double] {
-        var result: [StatType: Double] = [:]
-        if let leftPhoto = leftPhoto {
-            let measurements = leftPhoto.associatedMeasurements ?? historyManager.getEntriesAt(date: leftPhoto.date)
-            for measurement in measurements {
-                result[measurement.type] = measurement.value
-            }
-        }
-        return result
-    }
-    
-    private var newMeasurements: [StatType: Double] {
-        var result: [StatType: Double] = [:]
-        if let rightPhoto = rightPhoto {
-            let measurements = rightPhoto.associatedMeasurements ?? historyManager.getEntriesAt(date: rightPhoto.date)
-            for measurement in measurements {
-                result[measurement.type] = measurement.value
-            }
-        }
-        return result
     }
     
     var body: some View {
@@ -208,7 +185,8 @@ struct ComparisonCard: View {
                     showingPhotoSelector = false
                 },
                 currentlySelectedIndex: isSelectingLeftPhoto ? leftPhotoIndex : rightPhotoIndex,
-                title: isSelectingLeftPhoto ? "Select Left Photo" : "Select Right Photo"
+                title: isSelectingLeftPhoto ? "Select Left Photo" : "Select Right Photo",
+                historyManager: historyManager
             )
         }
     }
@@ -262,6 +240,7 @@ struct PhotoSelectorView: View {
     let onSelect: (Int) -> Void
     let currentlySelectedIndex: Int
     let title: String
+    @ObservedObject var historyManager: StatsHistoryManager
     @Environment(\.presentationMode) var presentationMode
     @State private var sortOption: PhotoSortOption = .date
     
@@ -342,7 +321,8 @@ struct PhotoSelectorView: View {
                                 DateSortedPhotosView(
                                     photos: photos,
                                     currentlySelectedIndex: currentlySelectedIndex,
-                                    onSelect: onSelect
+                                    onSelect: onSelect,
+                                    historyManager: historyManager
                                 )
                             } else {
                                 // All measurement-based sorting uses the same view with different stat types
@@ -350,7 +330,8 @@ struct PhotoSelectorView: View {
                                     photos: photos,
                                     statType: sortOption.statType,
                                     currentlySelectedIndex: currentlySelectedIndex,
-                                    onSelect: onSelect
+                                    onSelect: onSelect,
+                                    historyManager: historyManager
                                 )
                             }
                         }
@@ -416,6 +397,7 @@ struct DateSortedPhotosView: View {
     let photos: [ProgressPhoto]
     let currentlySelectedIndex: Int
     let onSelect: (Int) -> Void
+    @ObservedObject var historyManager: StatsHistoryManager
     
     var body: some View {
         // Group photos by month
@@ -455,7 +437,8 @@ struct DateSortedPhotosView: View {
                     photos: monthPhotos,
                     allPhotos: photos,
                     currentlySelectedIndex: currentlySelectedIndex,
-                    onSelect: onSelect
+                    onSelect: onSelect,
+                    historyManager: historyManager
                 )
             }
         }
@@ -474,13 +457,15 @@ struct MeasurementSortedPhotosView: View {
     let statType: StatType
     let currentlySelectedIndex: Int
     let onSelect: (Int) -> Void
+    @ObservedObject var historyManager: StatsHistoryManager
     
     // Get the associated measurement for each photo
     private var photosWithMeasurements: [(photo: ProgressPhoto, value: Double?)] {
         return photos.map { photo in
-            // Find the measurement of the specified type
-            let value = photo.associatedMeasurements?
-                .first(where: { $0.type == statType })?.value
+            let value = historyManager.getEntries(for: statType)
+                .filter { $0.date <= photo.date }
+                .sorted { $0.date > $1.date }
+                .first?.value
             return (photo, value)
         }
     }
@@ -581,7 +566,8 @@ struct MeasurementSortedPhotosView: View {
                     photos: photos,
                     allPhotos: photos,
                     currentlySelectedIndex: currentlySelectedIndex,
-                    onSelect: onSelect
+                    onSelect: onSelect,
+                    historyManager: historyManager
                 )
             }
         } else {
@@ -602,7 +588,8 @@ struct MeasurementSortedPhotosView: View {
                     photos: group.photos,
                     allPhotos: photos,
                     currentlySelectedIndex: currentlySelectedIndex,
-                    onSelect: onSelect
+                    onSelect: onSelect,
+                    historyManager: historyManager
                 )
             }
         }
@@ -622,6 +609,7 @@ struct PhotoGrid: View {
     let allPhotos: [ProgressPhoto] // The complete photo array for finding index
     let currentlySelectedIndex: Int
     let onSelect: (Int) -> Void
+    @ObservedObject var historyManager: StatsHistoryManager
     
     var body: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
@@ -670,7 +658,7 @@ struct PhotoGrid: View {
                             Spacer()
                             
                             // Measurement badge if available
-                            if let measurements = photo.associatedMeasurements, !measurements.isEmpty {
+                            if !getSummaryMeasurements(for: photo).isEmpty {
                                 HStack {
                                     Spacer()
                                     ForEach(getSummaryMeasurements(for: photo), id: \.type) { measurement in
@@ -697,14 +685,15 @@ struct PhotoGrid: View {
     
     // Helper to get key measurements for display
     private func getSummaryMeasurements(for photo: ProgressPhoto) -> [StatEntry] {
-        guard let measurements = photo.associatedMeasurements else { return [] }
+        // Fetch measurements dynamically using the historyManager
+        let allMeasurements = historyManager.getEntriesAt(date: photo.date)
         
         // Priority order for measurements to show
         let priorityTypes: [StatType] = [.weight, .bodyFat, .chest, .waist, .glutes]
         
         // Return up to 2 measurements based on priority
         return priorityTypes.compactMap { type in
-            measurements.first { $0.type == type }
+            allMeasurements.first { $0.type == type }
         }.prefix(2).map { $0 }
     }
     
@@ -753,7 +742,7 @@ struct PhotoGrid: View {
 
 struct SinglePhotoCard: View {
     let photo: ProgressPhoto
-    let historyManager: StatsHistoryManager
+    @ObservedObject var historyManager: StatsHistoryManager
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -832,7 +821,7 @@ struct MeasurementComparisonView: View {
     
     private var oldMeasurements: [StatType: Double] {
         var result: [StatType: Double] = [:]
-        let measurements = oldPhoto.associatedMeasurements ?? historyManager.getEntriesAt(date: oldPhoto.date)
+        let measurements = historyManager.getEntriesAt(date: oldPhoto.date)
         for measurement in measurements {
             result[measurement.type] = measurement.value
         }
@@ -841,7 +830,7 @@ struct MeasurementComparisonView: View {
     
     private var newMeasurements: [StatType: Double] {
         var result: [StatType: Double] = [:]
-        let measurements = newPhoto.associatedMeasurements ?? historyManager.getEntriesAt(date: newPhoto.date)
+        let measurements = historyManager.getEntriesAt(date: newPhoto.date)
         for measurement in measurements {
             result[measurement.type] = measurement.value
         }
@@ -882,6 +871,31 @@ struct MeasurementComparisonView: View {
                 .padding(.top, 6)
             }
         }
+    }
+    
+    private func formatValue(_ value: Double, type: StatType) -> String {
+        let formatter = NumberFormatter()
+        formatter.minimumFractionDigits = 1
+        formatter.maximumFractionDigits = 1
+        
+        if let formattedValue = formatter.string(from: NSNumber(value: value)) {
+            return "\(formattedValue)"
+        }
+        
+        return "\(value)"
+    }
+    
+    private func formatChange(_ change: Double, type: StatType) -> String {
+        let formatter = NumberFormatter()
+        formatter.minimumFractionDigits = 1
+        formatter.maximumFractionDigits = 1
+        formatter.positivePrefix = "+"
+        
+        if let formattedValue = formatter.string(from: NSNumber(value: change)) {
+            return "\(formattedValue)"
+        }
+        
+        return "\(change > 0 ? "+" : "")\(change)"
     }
 }
 
@@ -999,7 +1013,7 @@ struct MeasurementDetailView: View {
     
     private var measurements: [StatType: StatEntry] {
         var result: [StatType: StatEntry] = [:]
-        let entries = photo.associatedMeasurements ?? historyManager.getEntriesAt(date: photo.date)
+        let entries = historyManager.getEntriesAt(date: photo.date)
         for entry in entries {
             result[entry.type] = entry
         }
