@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var showingAddEntrySheet = false
     @State private var showingAccountSheet = false
     @State private var selectedTimeFrame: TimeFrame = .sixMonths
+    @State private var showingAddPhotoSheet = false
     
     // Computed properties to get latest values or nil
     private var weight: Double? {
@@ -186,8 +187,8 @@ struct ContentView: View {
                         
                         HStack(spacing: 15) {
                             QuickActionButton(
-                                title: "Add Weight",
-                                icon: "scalemass.fill",
+                                title: "Add Metric",
+                                icon: "ruler.fill",
                                 color: .blue
                             ) {
                                 showingAddEntrySheet = true
@@ -198,7 +199,7 @@ struct ContentView: View {
                                 icon: "camera.fill",
                                 color: .green
                             ) {
-                                // TODO: Add photo action
+                                showingAddPhotoSheet = true
                             }
                         }
                     }
@@ -234,6 +235,12 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingAccountSheet) {
             AccountView(historyManager: historyManager)
+        }
+        .sheet(isPresented: $showingAddPhotoSheet) {
+            AddPhotoView(
+                photoManager: ProgressPhotoManager.shared,
+                historyManager: StatsHistoryManager.shared
+            )
         }
         .onAppear {
             // Sync with Apple Health when the app launches
@@ -551,7 +558,7 @@ struct QuickActionButton: View {
         Button(action: action) {
             VStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.title2)
+                    .font(.system(size: 24))
                     .foregroundColor(color)
                 
                 Text(title)
@@ -559,6 +566,7 @@ struct QuickActionButton: View {
                     .foregroundColor(.white)
             }
             .frame(maxWidth: .infinity)
+            .frame(height: 40)
             .padding()
             .background(Color(red: 0.11, green: 0.11, blue: 0.12))
             .cornerRadius(15)
