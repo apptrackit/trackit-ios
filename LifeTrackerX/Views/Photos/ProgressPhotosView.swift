@@ -386,7 +386,7 @@ struct CategoryPhotoCard: View {
     
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MM/dd/yy"
+        formatter.dateFormat = "MMMM d, yyyy"
         return formatter.string(from: date)
     }
 }
