@@ -96,7 +96,7 @@ struct BMIRow: View {
     
     func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy 'at' H:mm"
+        formatter.dateFormat = "MMM d, yyyy"
         return formatter.string(from: date)
     }
 } 
