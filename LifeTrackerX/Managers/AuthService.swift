@@ -31,8 +31,15 @@ class AuthService {
     static let shared = AuthService()
     private let baseURL = "http://dev.ballabotond.com:3000" // Remove trailing slash
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "AuthService")
+    private let session: URLSession
     
-    private init() {}
+    private init() {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 10 // 10 seconds timeout
+        config.timeoutIntervalForResource = 30 // 30 seconds timeout for the entire resource
+        config.waitsForConnectivity = true // Wait for connectivity if offline
+        self.session = URLSession(configuration: config)
+    }
     
     func createRequest(_ endpoint: String, method: String, body: Data? = nil, headers: [String: String] = [:]) -> URLRequest? {
         let fullURL = baseURL + endpoint
@@ -47,6 +54,7 @@ class AuthService {
         request.httpMethod = method
         request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10 // 10 seconds timeout for this specific request
         
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         
@@ -73,7 +81,7 @@ class AuthService {
         }
         
         do {
-            let (responseData, response) = try await URLSession.shared.data(for: request)
+            let (responseData, response) = try await session.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 logger.error("Invalid response type")
@@ -95,6 +103,18 @@ class AuthService {
             let loginResponse = try decoder.decode(LoginResponse.self, from: responseData)
             logger.info("Login successful for user: \(loginResponse.user.username)")
             return loginResponse
+        } catch let error as URLError {
+            logger.error("Network error during login: \(error.localizedDescription)")
+            switch error.code {
+            case .notConnectedToInternet:
+                throw AuthError.networkError(error)
+            case .timedOut:
+                throw AuthError.networkError(error)
+            case .cannotConnectToHost:
+                throw AuthError.networkError(error)
+            default:
+                throw AuthError.networkError(error)
+            }
         } catch let error as DecodingError {
             logger.error("Failed to decode login response: \(error.localizedDescription)")
             throw AuthError.decodingError(error)
@@ -115,7 +135,7 @@ class AuthService {
         }
         
         do {
-            let (responseData, response) = try await URLSession.shared.data(for: request)
+            let (responseData, response) = try await session.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw AuthError.invalidResponse
@@ -127,6 +147,18 @@ class AuthService {
             
             let decoder = JSONDecoder()
             return try decoder.decode(SessionCheckResponse.self, from: responseData)
+        } catch let error as URLError {
+            logger.error("Network error during session check: \(error.localizedDescription)")
+            switch error.code {
+            case .notConnectedToInternet:
+                throw AuthError.networkError(error)
+            case .timedOut:
+                throw AuthError.networkError(error)
+            case .cannotConnectToHost:
+                throw AuthError.networkError(error)
+            default:
+                throw AuthError.networkError(error)
+            }
         } catch let error as DecodingError {
             throw AuthError.decodingError(error)
         } catch {
