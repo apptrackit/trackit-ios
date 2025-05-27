@@ -8,6 +8,8 @@ struct DashboardView: View {
     @State private var showingAccountSheet = false
     @State private var selectedTimeFrame: TimeFrame = .sixMonths
     @State private var showingAddPhotoSheet = false
+    @State private var hasPerformedInitialSync = false
+    @State private var isRefreshing = false
     @EnvironmentObject var authViewModel: AuthViewModel
     
     // Computed properties to get latest values or nil
@@ -245,10 +247,11 @@ struct DashboardView: View {
                 )
             }
             .onAppear {
-                // Sync with Apple Health when the app launches
-                if healthManager.isAuthorized {
-                    healthManager.importAllHealthData(historyManager: historyManager) { _ in
-                        print("Initial sync completed on app launch")
+                // Only perform initial sync once
+                if !hasPerformedInitialSync && healthManager.isAuthorized {
+                    hasPerformedInitialSync = true
+                    Task {
+                        await refreshData()
                     }
                 }
             }
@@ -256,14 +259,36 @@ struct DashboardView: View {
     }
     
     private func refreshData() async {
+        // Prevent multiple simultaneous refreshes
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        
         if healthManager.isAuthorized {
-            // Start refresh in background without waiting
-            Task(priority: .background) {
-                healthManager.importAllHealthData(historyManager: historyManager) { _ in
-                    print("Data refresh completed")
+            do {
+                // Create a continuation that can only be resumed once
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    var hasResumed = false
+                    
+                    healthManager.importAllHealthData(historyManager: historyManager) { success in
+                        // Ensure we only resume once
+                        guard !hasResumed else { return }
+                        hasResumed = true
+                        
+                        if success {
+                            print("Data refresh completed successfully")
+                            continuation.resume()
+                        } else {
+                            print("Data refresh failed")
+                            continuation.resume(throwing: NSError(domain: "DashboardView", code: -1, userInfo: [NSLocalizedDescriptionKey: "Data refresh failed"]))
+                        }
+                    }
                 }
+            } catch {
+                print("Error during data refresh: \(error.localizedDescription)")
             }
         }
+        
+        isRefreshing = false
     }
 }
 
