@@ -53,206 +53,204 @@ struct DashboardView: View {
     }
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color.black.edgesIgnoringSafeArea(.all)
-                
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Welcome Section
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(welcomeMessage)
-                                .font(.title)
+        ZStack {
+            Color.black.edgesIgnoringSafeArea(.all)
+            
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Welcome Section
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(welcomeMessage)
+                            .font(.title)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                        
+                        Text(Date().formatted(date: .complete, time: .omitted))
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    
+                    // Summary Section
+                    VStack(spacing: 15) {
+                        
+                        HStack(spacing: 15) {
+                            // Weight Card
+                            SummaryCard(
+                                title: "Weight",
+                                value: weight,
+                                unit: "kg",
+                                icon: "scalemass.fill",
+                                color: .blue
+                            )
+                            
+                            // Body Fat Card
+                            SummaryCard(
+                                title: "Body Fat",
+                                value: bodyFat,
+                                unit: "%",
+                                icon: "figure.arms.open",
+                                color: .green
+                            )
+                        }
+                        
+                        HStack(spacing: 15) {
+                            // BMI Card
+                            SummaryCard(
+                                title: "BMI",
+                                value: bmi,
+                                unit: "",
+                                icon: "chart.bar.fill",
+                                color: .orange
+                            )
+                            
+                            // Height Card
+                            SummaryCard(
+                                title: "Height",
+                                value: height,
+                                unit: "cm",
+                                icon: "ruler.fill",
+                                color: .purple
+                            )
+                        }
+                    }
+                    .padding(.horizontal)
+                    
+                    // Progress Section
+                    VStack(spacing: 15) {
+                        HStack {
+                            Text("Progress")
+                                .font(.title2)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white)
+                            Spacer()
                             
-                            Text(Date().formatted(date: .complete, time: .omitted))
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
-                        
-                        // Summary Section
-                        VStack(spacing: 15) {
-                            
-                            HStack(spacing: 15) {
-                                // Weight Card
-                                SummaryCard(
-                                    title: "Weight",
-                                    value: weight,
-                                    unit: "kg",
-                                    icon: "scalemass.fill",
-                                    color: .blue
-                                )
-                                
-                                // Body Fat Card
-                                SummaryCard(
-                                    title: "Body Fat",
-                                    value: bodyFat,
-                                    unit: "%",
-                                    icon: "figure.arms.open",
-                                    color: .green
-                                )
-                            }
-                            
-                            HStack(spacing: 15) {
-                                // BMI Card
-                                SummaryCard(
-                                    title: "BMI",
-                                    value: bmi,
-                                    unit: "",
-                                    icon: "chart.bar.fill",
-                                    color: .orange
-                                )
-                                
-                                // Height Card
-                                SummaryCard(
-                                    title: "Height",
-                                    value: height,
-                                    unit: "cm",
-                                    icon: "ruler.fill",
-                                    color: .purple
-                                )
-                            }
-                        }
-                        .padding(.horizontal)
-                        
-                        // Progress Section
-                        VStack(spacing: 15) {
-                            HStack {
-                                Text("Progress")
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                                Spacer()
-                                
-                                Picker("Time Frame", selection: $selectedTimeFrame) {
-                                    ForEach(TimeFrame.allCases, id: \.self) { timeFrame in
-                                        Text(timeFrame.rawValue.capitalized)
-                                            .tag(timeFrame)
-                                    }
-                                }
-                                .pickerStyle(.segmented)
-                                .frame(width: 200)
-                            }
-                            
-                            // Weight Progress Chart
-                            if let weight = weight {
-                                ProgressChartView(
-                                    title: "Weight Trend",
-                                    value: weight,
-                                    unit: "kg",
-                                    historyManager: historyManager,
-                                    statType: .weight,
-                                    timeFrame: selectedTimeFrame
-                                )
-                            }
-                            
-                            // Body Fat Progress Chart
-                            if let bodyFat = bodyFat {
-                                ProgressChartView(
-                                    title: "Body Fat Trend",
-                                    value: bodyFat,
-                                    unit: "%",
-                                    historyManager: historyManager,
-                                    statType: .bodyFat,
-                                    timeFrame: selectedTimeFrame
-                                )
-                            }
-                        }
-                        .padding(.horizontal)
-                        
-                        // Recent Measurements
-                        VStack(spacing: 15) {
-                            HStack {
-                                Text("Recent Measurements")
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                                Spacer()
-                            }
-                            
-                            ForEach(recentMeasurements.prefix(5), id: \.id) { entry in
-                                RecentMeasurementRow(entry: entry)
-                            }
-                        }
-                        .padding(.horizontal)
-                        
-                        // Quick Actions
-                        VStack(spacing: 15) {
-                            HStack {
-                                Text("Quick Actions")
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                                Spacer()
-                            }
-                            
-                            HStack(spacing: 15) {
-                                QuickActionButton(
-                                    title: "Add Metric",
-                                    icon: "ruler.fill",
-                                    color: .blue
-                                ) {
-                                    showingAddEntrySheet = true
-                                }
-                                
-                                QuickActionButton(
-                                    title: "Add Photo",
-                                    icon: "camera.fill",
-                                    color: .green
-                                ) {
-                                    showingAddPhotoSheet = true
+                            Picker("Time Frame", selection: $selectedTimeFrame) {
+                                ForEach(TimeFrame.allCases, id: \.self) { timeFrame in
+                                    Text(timeFrame.rawValue.capitalized)
+                                        .tag(timeFrame)
                                 }
                             }
+                            .pickerStyle(.segmented)
+                            .frame(width: 200)
                         }
-                        .padding(.horizontal)
+                        
+                        // Weight Progress Chart
+                        if let weight = weight {
+                            ProgressChartView(
+                                title: "Weight Trend",
+                                value: weight,
+                                unit: "kg",
+                                historyManager: historyManager,
+                                statType: .weight,
+                                timeFrame: selectedTimeFrame
+                            )
+                        }
+                        
+                        // Body Fat Progress Chart
+                        if let bodyFat = bodyFat {
+                            ProgressChartView(
+                                title: "Body Fat Trend",
+                                value: bodyFat,
+                                unit: "%",
+                                historyManager: historyManager,
+                                statType: .bodyFat,
+                                timeFrame: selectedTimeFrame
+                            )
+                        }
                     }
-                    .padding(.vertical)
+                    .padding(.horizontal)
+                    
+                    // Recent Measurements
+                    VStack(spacing: 15) {
+                        HStack {
+                            Text("Recent Measurements")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                            Spacer()
+                        }
+                        
+                        ForEach(recentMeasurements.prefix(5), id: \.id) { entry in
+                            RecentMeasurementRow(entry: entry)
+                        }
+                    }
+                    .padding(.horizontal)
+                    
+                    // Quick Actions
+                    VStack(spacing: 15) {
+                        HStack {
+                            Text("Quick Actions")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                            Spacer()
+                        }
+                        
+                        HStack(spacing: 15) {
+                            QuickActionButton(
+                                title: "Add Metric",
+                                icon: "ruler.fill",
+                                color: .blue
+                            ) {
+                                showingAddEntrySheet = true
+                            }
+                            
+                            QuickActionButton(
+                                title: "Add Photo",
+                                icon: "camera.fill",
+                                color: .green
+                            ) {
+                                showingAddPhotoSheet = true
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
                 }
-                .refreshable {
+                .padding(.vertical)
+            }
+            .refreshable {
+                await refreshData()
+            }
+        }
+        .navigationTitle("Dashboard")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    showingAddEntrySheet = true
+                }) {
+                    Image(systemName: "plus")
+                }
+            }
+            
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    showingAccountSheet = true
+                }) {
+                    Image(systemName: "person.circle")
+                }
+            }
+        }
+        .sheet(isPresented: $showingAddEntrySheet) {
+            TrackDataView(historyManager: historyManager)
+        }
+        .sheet(isPresented: $showingAccountSheet) {
+            AccountView(historyManager: historyManager)
+        }
+        .sheet(isPresented: $showingAddPhotoSheet) {
+            AddPhotoView(
+                photoManager: ProgressPhotoManager.shared,
+                historyManager: StatsHistoryManager.shared
+            )
+        }
+        .onAppear {
+            // Only perform initial sync once
+            if !hasPerformedInitialSync && healthManager.isAuthorized {
+                hasPerformedInitialSync = true
+                Task {
                     await refreshData()
-                }
-            }
-            .navigationTitle("Dashboard")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showingAddEntrySheet = true
-                    }) {
-                        Image(systemName: "plus")
-                    }
-                }
-                
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        showingAccountSheet = true
-                    }) {
-                        Image(systemName: "person.circle")
-                    }
-                }
-            }
-            .sheet(isPresented: $showingAddEntrySheet) {
-                TrackDataView(historyManager: historyManager)
-            }
-            .sheet(isPresented: $showingAccountSheet) {
-                AccountView(historyManager: historyManager)
-            }
-            .sheet(isPresented: $showingAddPhotoSheet) {
-                AddPhotoView(
-                    photoManager: ProgressPhotoManager.shared,
-                    historyManager: StatsHistoryManager.shared
-                )
-            }
-            .onAppear {
-                // Only perform initial sync once
-                if !hasPerformedInitialSync && healthManager.isAuthorized {
-                    hasPerformedInitialSync = true
-                    Task {
-                        await refreshData()
-                    }
                 }
             }
         }

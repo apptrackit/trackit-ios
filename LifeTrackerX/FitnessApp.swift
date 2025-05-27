@@ -25,7 +25,9 @@ struct FitnessApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if authViewModel.isAuthenticated {
+                if authViewModel.isInitializing {
+                    LoadingView()
+                } else if authViewModel.isAuthenticated {
                     MainTabView()
                         .environmentObject(authViewModel)
                 } else {

@@ -7,10 +7,13 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             // Dashboard Tab
-            DashboardView()
-                .tabItem {
-                    Label("Dashboard", systemImage: "chart.bar.fill")
-                }
+            NavigationStack {
+                DashboardView()
+            }
+            .tabItem {
+                Label("Dashboard", systemImage: "chart.bar.fill")
+            }
+            .tag(0)
             
             // Progress Tab (measurements)
             NavigationStack {

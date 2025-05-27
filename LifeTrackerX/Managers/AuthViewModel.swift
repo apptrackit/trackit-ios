@@ -6,6 +6,7 @@ import os.log
 class AuthViewModel: ObservableObject {
     @Published var isAuthenticated = false
     @Published var isLoading = false
+    @Published var isInitializing = true
     @Published var errorMessage: String?
     @Published var user: User?
     
@@ -87,10 +88,12 @@ class AuthViewModel: ObservableObject {
     
     private func checkExistingSession() async {
         logger.info("Checking existing session")
+        isInitializing = true
         do {
             guard let accessToken = secureStorage.getAccessToken(),
                   let apiKey = secureStorage.getApiKey() else {
                 logger.info("No existing session found")
+                isInitializing = false
                 return
             }
             
@@ -111,6 +114,7 @@ class AuthViewModel: ObservableObject {
             logger.error("Session check failed: \(error.localizedDescription)")
             secureStorage.clearAuthData()
         }
+        isInitializing = false
     }
     
     func refreshSession() async {
