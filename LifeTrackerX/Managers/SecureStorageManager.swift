@@ -6,6 +6,9 @@ class SecureStorageManager {
     static let shared = SecureStorageManager()
     private let logger = Logger(subsystem: "com.31b4.LifeTrackerX", category: "SecureStorage")
     
+    // Dedicated service identifier for Keychain items
+    private let keychainService = "com.trackit.ios.keychain"
+    
     private init() {}
     
     enum KeychainError: Error {
@@ -21,6 +24,7 @@ class SecureStorageManager {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
+            kSecAttrService as String: keychainService,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
         ]
         
@@ -41,6 +45,7 @@ class SecureStorageManager {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
+            kSecAttrService as String: keychainService,
             kSecReturnData as String: true
         ]
         
@@ -59,12 +64,13 @@ class SecureStorageManager {
     private func deleteFromKeychain(key: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key
+            kSecAttrAccount as String: key,
+            kSecAttrService as String: keychainService
         ]
         
         let status = SecItemDelete(query as CFDictionary)
-        if status == errSecSuccess {
-            logger.debug("Successfully deleted data from Keychain for key: \(key)")
+        if status == errSecSuccess || status == errSecItemNotFound {
+            logger.info("Successfully deleted data from Keychain for key: \(key)")
             return true
         } else {
             logger.error("Failed to delete data from Keychain for key: \(key), status: \(status)")
@@ -252,10 +258,28 @@ class SecureStorageManager {
     
     func clearAuthData() {
         logger.info("Clearing auth data from Keychain")
-        if deleteFromKeychain(key: "authData") {
-            logger.info("Auth data cleared successfully")
+        
+        // List of all auth-related keys to delete
+        let keysToDelete = [
+            "authData",
+            "accessToken",
+            "refreshToken",
+            "deviceId",
+            "apiKey"
+        ]
+        
+        var success = true
+        for key in keysToDelete {
+            if !deleteFromKeychain(key: key) {
+                logger.error("Failed to delete data from Keychain for key: \(key)")
+                success = false
+            }
+        }
+        
+        if success {
+            logger.info("Successfully cleared all authentication data")
         } else {
-            logger.error("Failed to clear auth data")
+            logger.error("Failed to clear some authentication data")
         }
     }
     

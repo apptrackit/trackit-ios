@@ -15,8 +15,10 @@ struct FitnessApp: App {
     @StateObject private var authViewModel = AuthViewModel()
     
     init() {
-        // Force portrait orientation for the entire app
-        UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+        // Force portrait orientation for the entire app using modern approach
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+        }
         AppDelegate.orientationLock = .portrait
     }
     
