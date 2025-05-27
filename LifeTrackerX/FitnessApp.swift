@@ -12,6 +12,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct FitnessApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate: AppDelegate
+    @StateObject private var authViewModel = AuthViewModel()
     
     init() {
         // Force portrait orientation for the entire app
@@ -21,7 +22,15 @@ struct FitnessApp: App {
     
     var body: some Scene {
         WindowGroup {
-            MainTabView()
+            Group {
+                if authViewModel.isAuthenticated {
+                    MainTabView()
+                        .environmentObject(authViewModel)
+                } else {
+                    LoginView()
+                        .environmentObject(authViewModel)
+                }
+            }
         }
     }
 }

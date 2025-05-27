@@ -1,19 +1,16 @@
 import SwiftUI
 
-
 struct MainTabView: View {
+    @EnvironmentObject var authViewModel: AuthViewModel
     @State private var selectedTab = 0
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            // Dashboard Tab (existing ContentView)
-            NavigationStack {
-                ContentView()
-            }
-            .tabItem {
-                Label("Dashboard", systemImage: "chart.bar.fill")
-            }
-            .tag(0)
+            // Dashboard Tab
+            DashboardView()
+                .tabItem {
+                    Label("Dashboard", systemImage: "chart.bar.fill")
+                }
             
             // Progress Tab (measurements)
             NavigationStack {
