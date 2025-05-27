@@ -6,7 +6,7 @@ import os.log
 class ProgressPhotoManager: ObservableObject {
     static let shared = ProgressPhotoManager()
     
-    private let logger = Logger(subsystem: "com.31b4.LifeTrackerX", category: "ProgressPhoto")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "ProgressPhoto")
     
     private let fileManager = FileManager.default
     private var photosDirectory: URL? {

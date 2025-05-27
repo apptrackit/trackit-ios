@@ -4,10 +4,10 @@ import os.log
 
 class SecureStorageManager {
     static let shared = SecureStorageManager()
-    private let logger = Logger(subsystem: "com.31b4.LifeTrackerX", category: "SecureStorage")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "SecureStorage")
     
     // Dedicated service identifier for Keychain items
-    private let keychainService = "com.trackit.ios.keychain"
+    private let keychainService = Bundle.main.bundleIdentifier! + ".keychain"
     
     private init() {}
     

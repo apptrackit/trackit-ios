@@ -11,7 +11,7 @@ class AuthViewModel: ObservableObject {
     
     private let authService = AuthService.shared
     private let secureStorage = SecureStorageManager.shared
-    private let logger = Logger(subsystem: "com.31b4.LifeTrackerX", category: "Auth")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "Auth")
     
     init() {
         logger.info("AuthViewModel initialized")

@@ -30,7 +30,7 @@ enum AuthError: Error {
 class AuthService {
     static let shared = AuthService()
     private let baseURL = "http://dev.ballabotond.com:3000" // Remove trailing slash
-    private let logger = Logger(subsystem: "com.31b4.LifeTrackerX", category: "AuthService")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "AuthService")
     
     private init() {}
     
