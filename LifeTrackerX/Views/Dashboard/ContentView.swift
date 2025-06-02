@@ -605,7 +605,7 @@ extension DashboardView {
     func fetchUserData() async {
         do {
             // Example of using NetworkManager for authenticated requests
-            let userData: User = try await NetworkManager.shared.makeAuthenticatedRequest("/user/profile")
+            let _: User = try await NetworkManager.shared.makeAuthenticatedRequest("/user/profile")
             // Handle the response
         } catch {
             // Handle error

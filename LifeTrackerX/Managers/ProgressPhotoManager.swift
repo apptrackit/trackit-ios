@@ -55,7 +55,7 @@ class ProgressPhotoManager: ObservableObject {
     }
     
     func deletePhoto(id: UUID) {
-        if let photo = self.photos.first(where: { $0.id == id }) {
+        if self.photos.contains(where: { $0.id == id }) {
             // Delete the actual photo file
             deletePhoto(id: id.uuidString)
             // Remove from metadata

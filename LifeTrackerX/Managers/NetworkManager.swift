@@ -8,8 +8,8 @@ class NetworkManager {
     private init() {}
     
     func makeAuthenticatedRequest<T: Decodable>(_ endpoint: String, method: String = "GET", body: Data? = nil) async throws -> T {
-        guard let accessToken = try secureStorage.getAccessToken(),
-              let apiKey = try secureStorage.getApiKey() else {
+        guard let accessToken = secureStorage.getAccessToken(),
+              let apiKey = secureStorage.getApiKey() else {
             throw AuthError.unauthorized
         }
         
@@ -32,13 +32,13 @@ class NetworkManager {
             // Handle token expiration
             if httpResponse.statusCode == 401 {
                 // Try to refresh the token
-                if let refreshToken = try secureStorage.getRefreshToken(),
-                   let deviceId = try secureStorage.getDeviceId() {
+                if let refreshToken = secureStorage.getRefreshToken(),
+                   let deviceId = secureStorage.getDeviceId() {
                     let refreshResponse = try await authService.refreshToken(refreshToken: refreshToken, deviceId: deviceId)
                     
                     // Save new tokens
-                    try secureStorage.saveAccessToken(refreshResponse.accessToken)
-                    try secureStorage.saveRefreshToken(refreshResponse.refreshToken)
+                    secureStorage.saveAccessToken(refreshResponse.accessToken)
+                    secureStorage.saveRefreshToken(refreshResponse.refreshToken)
                     
                     // Retry the original request with new token
                     return try await makeAuthenticatedRequest(endpoint, method: method, body: body)
