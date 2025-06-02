@@ -1,13 +1,16 @@
 import SwiftUI
 import Charts
 
-struct ContentView: View {
+struct DashboardView: View {
     @StateObject private var historyManager = StatsHistoryManager.shared
     @StateObject private var healthManager = HealthManager()
     @State private var showingAddEntrySheet = false
     @State private var showingAccountSheet = false
     @State private var selectedTimeFrame: TimeFrame = .sixMonths
     @State private var showingAddPhotoSheet = false
+    @State private var hasPerformedInitialSync = false
+    @State private var isRefreshing = false
+    @EnvironmentObject var authViewModel: AuthViewModel
     
     // Computed properties to get latest values or nil
     private var weight: Double? {
@@ -243,24 +246,47 @@ struct ContentView: View {
             )
         }
         .onAppear {
-            // Sync with Apple Health when the app launches
-            if healthManager.isAuthorized {
-                healthManager.importAllHealthData(historyManager: historyManager) { _ in
-                    print("Initial sync completed on app launch")
+            // Only perform initial sync once
+            if !hasPerformedInitialSync && healthManager.isAuthorized {
+                hasPerformedInitialSync = true
+                Task {
+                    await refreshData()
                 }
             }
         }
     }
     
     private func refreshData() async {
+        // Prevent multiple simultaneous refreshes
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        
         if healthManager.isAuthorized {
-            // Start refresh in background without waiting
-            Task(priority: .background) {
-                healthManager.importAllHealthData(historyManager: historyManager) { _ in
-                    print("Data refresh completed")
+            do {
+                // Create a continuation that can only be resumed once
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    var hasResumed = false
+                    
+                    healthManager.importAllHealthData(historyManager: historyManager) { success in
+                        // Ensure we only resume once
+                        guard !hasResumed else { return }
+                        hasResumed = true
+                        
+                        if success {
+                            print("Data refresh completed successfully")
+                            continuation.resume()
+                        } else {
+                            print("Data refresh failed")
+                            continuation.resume(throwing: NSError(domain: "DashboardView", code: -1, userInfo: [NSLocalizedDescriptionKey: "Data refresh failed"]))
+                        }
+                    }
                 }
+            } catch {
+                print("Error during data refresh: \(error.localizedDescription)")
             }
         }
+        
+        isRefreshing = false
     }
 }
 
@@ -570,6 +596,20 @@ struct QuickActionButton: View {
             .padding()
             .background(Color(red: 0.11, green: 0.11, blue: 0.12))
             .cornerRadius(15)
+        }
+    }
+}
+
+// Example of how to make an authenticated API call
+extension DashboardView {
+    func fetchUserData() async {
+        do {
+            // Example of using NetworkManager for authenticated requests
+            let _: User = try await NetworkManager.shared.makeAuthenticatedRequest("/user/profile")
+            // Handle the response
+        } catch {
+            // Handle error
+            print("Error fetching user data: \(error)")
         }
     }
 }

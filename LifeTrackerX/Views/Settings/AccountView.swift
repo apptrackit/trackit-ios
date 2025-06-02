@@ -3,10 +3,13 @@ import HealthKit
 
 struct AccountView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var authViewModel: AuthViewModel
     @StateObject private var healthManager = HealthManager()
     @ObservedObject var historyManager: StatsHistoryManager
     @State private var showHealthAccessSheet = false
     @State private var showExportSheet = false
+    @State private var isSigningOut = false
+    @State private var showSignOutConfirmation = false
     
     // Computed property to check if Apple Health is actively connected
     private var isAppleHealthConnected: Bool {
@@ -87,20 +90,30 @@ struct AccountView: View {
                     }
                 }
                 
-                Section {
+                Section(header: Text("Account")) {
                     Button(action: {
-                        // Sign out action
+                        showSignOutConfirmation = true
                     }) {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                            .foregroundColor(.red)
+                        HStack {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .foregroundColor(.red)
+                            Text("Sign Out")
+                                .foregroundColor(.red)
+                            if isSigningOut {
+                                Spacer()
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle())
+                            }
+                        }
                     }
+                    .disabled(isSigningOut)
                 }
             }
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Done") {
+                    Button("Close") {
                         dismiss()
                     }
                 }
@@ -110,6 +123,18 @@ struct AccountView: View {
             }
             .sheet(isPresented: $showExportSheet) {
                 ExportDataView(historyManager: historyManager)
+            }
+            .alert("Sign Out", isPresented: $showSignOutConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Sign Out", role: .destructive) {
+                    Task {
+                        isSigningOut = true
+                        await authViewModel.logout()
+                        isSigningOut = false
+                    }
+                }
+            } message: {
+                Text("Are you sure you want to sign out?")
             }
         }
     }

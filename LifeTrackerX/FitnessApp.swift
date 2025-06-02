@@ -12,16 +12,29 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct FitnessApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate: AppDelegate
+    @StateObject private var authViewModel = AuthViewModel()
     
     init() {
-        // Force portrait orientation for the entire app
-        UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+        // Force portrait orientation for the entire app using modern approach
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+        }
         AppDelegate.orientationLock = .portrait
     }
     
     var body: some Scene {
         WindowGroup {
-            MainTabView()
+            Group {
+                if authViewModel.isInitializing {
+                    LoadingView()
+                } else if authViewModel.isAuthenticated {
+                    MainTabView()
+                        .environmentObject(authViewModel)
+                } else {
+                    LoginView()
+                        .environmentObject(authViewModel)
+                }
+            }
         }
     }
 }
