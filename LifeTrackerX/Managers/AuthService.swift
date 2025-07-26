@@ -194,12 +194,18 @@ class AuthService {
         }
     }
     
-    func logout(deviceId: String, userId: Int) async throws -> LogoutResponse {
+    func logout(deviceId: String, userId: Int, accessToken: String) async throws -> LogoutResponse {
+        logger.info("Attempting logout for device ID: \(deviceId), user ID: \(userId)")
+        
         let logoutRequest = LogoutRequest(deviceId: deviceId, userId: userId)
         let encoder = JSONEncoder()
         let data = try encoder.encode(logoutRequest)
         
-        let headers: [String: String] = [:]
+        let headers = [
+            "Authorization": "Bearer \(accessToken)"
+        ]
+        
+        logger.debug("Logout request headers: \(headers)")
         
         guard let request = createRequest("/auth/logout", method: "POST", body: data, headers: headers) else {
             throw AuthError.invalidURL
@@ -212,12 +218,21 @@ class AuthService {
                 throw AuthError.invalidResponse
             }
             
+            logger.debug("Logout response status code: \(httpResponse.statusCode)")
+            
+            if let responseString = String(data: responseData, encoding: .utf8) {
+                logger.debug("Logout response body: \(responseString)")
+            }
+            
             guard httpResponse.statusCode == 200 else {
+                logger.error("Logout failed with status code: \(httpResponse.statusCode)")
                 throw AuthError.unauthorized
             }
             
             let decoder = JSONDecoder()
-            return try decoder.decode(LogoutResponse.self, from: responseData)
+            let logoutResponse = try decoder.decode(LogoutResponse.self, from: responseData)
+            logger.info("Logout successful")
+            return logoutResponse
         } catch let error as DecodingError {
             throw AuthError.decodingError(error)
         } catch {

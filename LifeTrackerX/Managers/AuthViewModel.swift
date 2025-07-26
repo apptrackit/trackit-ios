@@ -60,13 +60,15 @@ class AuthViewModel: ObservableObject {
         
         do {
             guard let deviceId = secureStorage.getDeviceId(),
-                  let userId = user?.id else {
+                  let userId = user?.id,
+                  let accessToken = secureStorage.getAccessToken() else {
                 logger.error("Missing required data for logout")
                 throw AuthError.unknown
             }
             
             logger.debug("Logging out with device ID: \(deviceId)")
-            _ = try await authService.logout(deviceId: deviceId, userId: userId)
+            logger.debug("Using access token: \(accessToken.prefix(10))...")
+            _ = try await authService.logout(deviceId: deviceId, userId: userId, accessToken: accessToken)
             
             // Clear stored data
             secureStorage.clearAuthData()
