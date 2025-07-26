@@ -34,14 +34,12 @@ class AuthViewModel: ObservableObject {
             logger.debug("Received access token: \(response.accessToken.prefix(10))...")
             logger.debug("Received refresh token: \(response.refreshToken.prefix(10))...")
             logger.debug("Received device ID: \(response.deviceId)")
-            logger.debug("Received API key: \(response.apiKey.prefix(10))...")
             
             // Save authentication data
             secureStorage.saveAuthData(response)
             secureStorage.saveAccessToken(response.accessToken)
             secureStorage.saveRefreshToken(response.refreshToken)
             secureStorage.saveDeviceId(response.deviceId)
-            secureStorage.saveApiKey(response.apiKey)
             logger.info("Successfully saved all authentication data")
             
             user = response.user
@@ -62,14 +60,13 @@ class AuthViewModel: ObservableObject {
         
         do {
             guard let deviceId = secureStorage.getDeviceId(),
-                  let apiKey = secureStorage.getApiKey(),
                   let userId = user?.id else {
                 logger.error("Missing required data for logout")
                 throw AuthError.unknown
             }
             
             logger.debug("Logging out with device ID: \(deviceId)")
-            _ = try await authService.logout(deviceId: deviceId, userId: userId, apiKey: apiKey)
+            _ = try await authService.logout(deviceId: deviceId, userId: userId)
             
             // Clear stored data
             secureStorage.clearAuthData()
@@ -90,17 +87,15 @@ class AuthViewModel: ObservableObject {
         logger.info("Checking existing session")
         isInitializing = true
         do {
-            guard let accessToken = secureStorage.getAccessToken(),
-                  let apiKey = secureStorage.getApiKey() else {
+            guard let accessToken = secureStorage.getAccessToken() else {
                 logger.info("No existing session found")
                 isInitializing = false
                 return
             }
             
             logger.debug("Found existing access token: \(accessToken.prefix(10))...")
-            logger.debug("Found existing API key: \(apiKey.prefix(10))...")
             
-            let response = try await authService.checkSession(accessToken: accessToken, apiKey: apiKey)
+            let response = try await authService.checkSession(accessToken: accessToken)
             
             if response.isAuthenticated {
                 user = response.user

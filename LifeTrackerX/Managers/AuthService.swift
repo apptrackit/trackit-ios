@@ -29,7 +29,7 @@ enum AuthError: Error {
 
 class AuthService {
     static let shared = AuthService()
-    private let baseURL = "http://dev.ballabotond.com:4000"
+    private let baseURL = "http://dev.ballabotond.com:3000"
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "AuthService")
     private let session: URLSession
     
@@ -124,10 +124,9 @@ class AuthService {
         }
     }
     
-    func checkSession(accessToken: String, apiKey: String) async throws -> SessionCheckResponse {
+    func checkSession(accessToken: String) async throws -> SessionCheckResponse {
         let headers = [
-            "Authorization": "Bearer \(accessToken)",
-            "x-api-key": apiKey
+            "Authorization": "Bearer \(accessToken)"
         ]
         
         guard let request = createRequest("/auth/check", method: "GET", headers: headers) else {
@@ -195,12 +194,12 @@ class AuthService {
         }
     }
     
-    func logout(deviceId: String, userId: Int, apiKey: String) async throws -> LogoutResponse {
+    func logout(deviceId: String, userId: Int) async throws -> LogoutResponse {
         let logoutRequest = LogoutRequest(deviceId: deviceId, userId: userId)
         let encoder = JSONEncoder()
         let data = try encoder.encode(logoutRequest)
         
-        let headers = ["x-api-key": apiKey]
+        let headers: [String: String] = [:]
         
         guard let request = createRequest("/auth/logout", method: "POST", body: data, headers: headers) else {
             throw AuthError.invalidURL

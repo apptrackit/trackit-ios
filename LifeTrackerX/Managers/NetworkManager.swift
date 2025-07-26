@@ -8,14 +8,12 @@ class NetworkManager {
     private init() {}
     
     func makeAuthenticatedRequest<T: Decodable>(_ endpoint: String, method: String = "GET", body: Data? = nil) async throws -> T {
-        guard let accessToken = secureStorage.getAccessToken(),
-              let apiKey = secureStorage.getApiKey() else {
+        guard let accessToken = secureStorage.getAccessToken() else {
             throw AuthError.unauthorized
         }
         
         let headers = [
-            "Authorization": "Bearer \(accessToken)",
-            "x-api-key": apiKey
+            "Authorization": "Bearer \(accessToken)"
         ]
         
         guard let request = authService.createRequest(endpoint, method: method, body: body, headers: headers) else {

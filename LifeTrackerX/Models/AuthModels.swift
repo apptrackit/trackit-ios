@@ -11,7 +11,6 @@ struct LoginResponse: Codable {
     let message: String
     let accessToken: String
     let refreshToken: String
-    let apiKey: String
     let deviceId: String
     let user: User
     
@@ -19,7 +18,6 @@ struct LoginResponse: Codable {
         case success, authenticated, message
         case accessToken = "accessToken"
         case refreshToken = "refreshToken"
-        case apiKey = "apiKey"
         case deviceId = "deviceId"
         case user
     }

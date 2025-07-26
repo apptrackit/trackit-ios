@@ -264,8 +264,7 @@ class SecureStorageManager {
             "authData",
             "accessToken",
             "refreshToken",
-            "deviceId",
-            "apiKey"
+            "deviceId"
         ]
         
         var success = true
@@ -337,30 +336,5 @@ class SecureStorageManager {
         }
     }
     
-    func saveApiKey(_ apiKey: String) {
-        logger.info("Saving API key to Keychain")
-        if let data = apiKey.data(using: .utf8) {
-            if saveToKeychain(key: "apiKey", data: data) {
-                logger.info("API key saved successfully")
-            } else {
-                logger.error("Failed to save API key")
-            }
-        }
-    }
-    
-    func getApiKey() -> String? {
-        logger.info("Retrieving API key from Keychain")
-        guard let data = loadFromKeychain(key: "apiKey") else {
-            logger.error("No API key found in Keychain")
-            return nil
-        }
-        
-        if let apiKey = String(data: data, encoding: .utf8) {
-            logger.info("API key retrieved successfully")
-            return apiKey
-        } else {
-            logger.error("Failed to decode API key")
-            return nil
-        }
-    }
+
 } 
