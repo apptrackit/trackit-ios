@@ -10,6 +10,7 @@ struct AccountView: View {
     @State private var showExportSheet = false
     @State private var isSigningOut = false
     @State private var showSignOutConfirmation = false
+    @State private var showCopiedMessage = false
     
     // Computed property to check if Apple Health is actively connected
     private var isAppleHealthConnected: Bool {
@@ -85,8 +86,56 @@ struct AccountView: View {
                     HStack {
                         Label("Version", systemImage: "info.circle.fill")
                         Spacer()
-                        Text("1.0.0")
+                        Text(Bundle.main.appVersion)
                             .foregroundColor(.gray)
+                        Image(systemName: "doc.on.doc")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIPasteboard.general.string = Bundle.main.appVersion
+                        showCopiedMessage = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            showCopiedMessage = false
+                        }
+                    }
+                    
+                    HStack {
+                        Label("Build Number", systemImage: "number.circle.fill")
+                        Spacer()
+                        Text(Bundle.main.buildNumber)
+                            .foregroundColor(.gray)
+                        Image(systemName: "doc.on.doc")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIPasteboard.general.string = Bundle.main.buildNumber
+                        showCopiedMessage = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            showCopiedMessage = false
+                        }
+                    }
+                    
+                    HStack {
+                        Label("Full Version", systemImage: "tag.fill")
+                        Spacer()
+                        Text(Bundle.main.versionString)
+                            .foregroundColor(.gray)
+                            .font(.caption)
+                        Image(systemName: "doc.on.doc")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIPasteboard.general.string = Bundle.main.versionString
+                        showCopiedMessage = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            showCopiedMessage = false
+                        }
                     }
                 }
                 
@@ -136,6 +185,28 @@ struct AccountView: View {
             } message: {
                 Text("Are you sure you want to sign out?")
             }
+            .overlay(
+                Group {
+                    if showCopiedMessage {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                Text("Copied to clipboard!")
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Color.black.opacity(0.8))
+                                    .cornerRadius(8)
+                                    .padding(.bottom, 100)
+                                Spacer()
+                            }
+                        }
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.2), value: showCopiedMessage)
+                    }
+                }
+            )
         }
     }
 }
