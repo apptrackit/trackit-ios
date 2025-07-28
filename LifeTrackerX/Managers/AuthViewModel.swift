@@ -53,6 +53,38 @@ class AuthViewModel: ObservableObject {
         isLoading = false
     }
     
+    func register(username: String, email: String, password: String) async {
+        logger.info("Attempting registration for user: \(username)")
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            let response = try await authService.register(username: username, email: email, password: password)
+            logger.info("Registration successful for user: \(response.user.username)")
+            
+            // Log received tokens
+            logger.debug("Received access token: \(response.accessToken.prefix(10))...")
+            logger.debug("Received refresh token: \(response.refreshToken.prefix(10))...")
+            logger.debug("Received device ID: \(response.deviceId)")
+            
+            // Save authentication data
+            secureStorage.saveAuthData(response)
+            secureStorage.saveAccessToken(response.accessToken)
+            secureStorage.saveRefreshToken(response.refreshToken)
+            secureStorage.saveDeviceId(response.deviceId)
+            logger.info("Successfully saved all authentication data")
+            
+            user = response.user
+            isAuthenticated = true
+            logger.info("Registration process completed successfully")
+        } catch {
+            logger.error("Registration failed: \(error.localizedDescription)")
+            errorMessage = error.localizedDescription
+        }
+        
+        isLoading = false
+    }
+    
     func logout() async {
         logger.info("Attempting logout")
         isLoading = true
@@ -60,13 +92,15 @@ class AuthViewModel: ObservableObject {
         
         do {
             guard let deviceId = secureStorage.getDeviceId(),
-                  let userId = user?.id else {
+                  let userId = user?.id,
+                  let accessToken = secureStorage.getAccessToken() else {
                 logger.error("Missing required data for logout")
                 throw AuthError.unknown
             }
             
             logger.debug("Logging out with device ID: \(deviceId)")
-            _ = try await authService.logout(deviceId: deviceId, userId: userId)
+            logger.debug("Using access token: \(accessToken.prefix(10))...")
+            _ = try await authService.logout(deviceId: deviceId, userId: userId, accessToken: accessToken)
             
             // Clear stored data
             secureStorage.clearAuthData()

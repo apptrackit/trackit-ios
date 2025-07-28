@@ -5,6 +5,36 @@ struct LoginRequest: Codable {
     let password: String
 }
 
+struct RegisterRequest: Codable {
+    let username: String
+    let email: String
+    let password: String
+}
+
+struct ErrorResponse: Codable {
+    let success: Bool
+    let message: String?
+    let error: String?
+}
+
+struct RegisterResponse: Codable {
+    let success: Bool
+    let authenticated: Bool
+    let message: String
+    let accessToken: String
+    let refreshToken: String
+    let deviceId: String
+    let user: User
+    
+    enum CodingKeys: String, CodingKey {
+        case success, authenticated, message
+        case accessToken = "accessToken"
+        case refreshToken = "refreshToken"
+        case deviceId = "deviceId"
+        case user
+    }
+}
+
 struct LoginResponse: Codable {
     let success: Bool
     let authenticated: Bool

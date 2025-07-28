@@ -29,7 +29,7 @@ enum AuthError: Error {
 
 class AuthService {
     static let shared = AuthService()
-    private let baseURL = "http://dev.ballabotond.com:3000"
+    private let baseURL = "http://dev.ballabotond.com:4000"
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "AuthService")
     private let session: URLSession
     
@@ -124,6 +124,100 @@ class AuthService {
         }
     }
     
+    func register(username: String, email: String, password: String) async throws -> RegisterResponse {
+        logger.info("Attempting registration for username: \(username), email: \(email)")
+        
+        let registerRequest = RegisterRequest(username: username, email: email, password: password)
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(registerRequest)
+        
+        // Log the request data for debugging
+        if let requestString = String(data: data, encoding: .utf8) {
+            logger.debug("Register request data: \(requestString)")
+        }
+        
+        guard let request = createRequest("/user/register", method: "POST", body: data) else {
+            logger.error("Failed to create register request")
+            throw AuthError.invalidURL
+        }
+        
+        do {
+            let (responseData, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                logger.error("Invalid response type")
+                throw AuthError.invalidResponse
+            }
+            
+            logger.debug("Register response status code: \(httpResponse.statusCode)")
+            
+            if let responseString = String(data: responseData, encoding: .utf8) {
+                logger.debug("Register response body: \(responseString)")
+            }
+            
+            // Log response headers for debugging
+            logger.debug("Register response headers: \(httpResponse.allHeaderFields)")
+            
+            switch httpResponse.statusCode {
+            case 200, 201:
+                let decoder = JSONDecoder()
+                let registerResponse = try decoder.decode(RegisterResponse.self, from: responseData)
+                logger.info("Registration successful for user: \(registerResponse.user.username)")
+                return registerResponse
+            case 400:
+                // Try to decode error response
+                if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: responseData) {
+                    throw AuthError.networkError(NSError(domain: "Registration", code: 400, userInfo: [NSLocalizedDescriptionKey: errorResponse.message ?? errorResponse.error ?? "Invalid email format"]))
+                } else {
+                    throw AuthError.networkError(NSError(domain: "Registration", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid email format"]))
+                }
+            case 409:
+                // Try to decode error response
+                if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: responseData) {
+                    throw AuthError.networkError(NSError(domain: "Registration", code: 409, userInfo: [NSLocalizedDescriptionKey: errorResponse.message ?? errorResponse.error ?? "Username already exists"]))
+                } else {
+                    throw AuthError.networkError(NSError(domain: "Registration", code: 409, userInfo: [NSLocalizedDescriptionKey: "Username already exists"]))
+                }
+            case 500:
+                // Try to decode error response
+                if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: responseData) {
+                    let errorMessage = errorResponse.message ?? errorResponse.error ?? "Server error"
+                    logger.error("Backend registration error: \(errorMessage)")
+                    throw AuthError.networkError(NSError(domain: "Registration", code: 500, userInfo: [NSLocalizedDescriptionKey: errorMessage]))
+                } else {
+                    logger.error("Backend registration error: Unknown server error")
+                    throw AuthError.networkError(NSError(domain: "Registration", code: 500, userInfo: [NSLocalizedDescriptionKey: "Server error"]))
+                }
+            default:
+                logger.error("Registration failed with status code: \(httpResponse.statusCode)")
+                // Try to decode error response
+                if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: responseData) {
+                    throw AuthError.networkError(NSError(domain: "Registration", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorResponse.message ?? errorResponse.error ?? "Registration failed"]))
+                } else {
+                    throw AuthError.unauthorized
+                }
+            }
+        } catch let error as URLError {
+            logger.error("Network error during registration: \(error.localizedDescription)")
+            switch error.code {
+            case .notConnectedToInternet:
+                throw AuthError.networkError(error)
+            case .timedOut:
+                throw AuthError.networkError(error)
+            case .cannotConnectToHost:
+                throw AuthError.networkError(error)
+            default:
+                throw AuthError.networkError(error)
+            }
+        } catch let error as DecodingError {
+            logger.error("Failed to decode register response: \(error.localizedDescription)")
+            throw AuthError.decodingError(error)
+        } catch {
+            logger.error("Register request failed: \(error.localizedDescription)")
+            throw AuthError.networkError(error)
+        }
+    }
+    
     func checkSession(accessToken: String) async throws -> SessionCheckResponse {
         let headers = [
             "Authorization": "Bearer \(accessToken)"
@@ -194,12 +288,18 @@ class AuthService {
         }
     }
     
-    func logout(deviceId: String, userId: Int) async throws -> LogoutResponse {
+    func logout(deviceId: String, userId: Int, accessToken: String) async throws -> LogoutResponse {
+        logger.info("Attempting logout for device ID: \(deviceId), user ID: \(userId)")
+        
         let logoutRequest = LogoutRequest(deviceId: deviceId, userId: userId)
         let encoder = JSONEncoder()
         let data = try encoder.encode(logoutRequest)
         
-        let headers: [String: String] = [:]
+        let headers = [
+            "Authorization": "Bearer \(accessToken)"
+        ]
+        
+        logger.debug("Logout request headers: \(headers)")
         
         guard let request = createRequest("/auth/logout", method: "POST", body: data, headers: headers) else {
             throw AuthError.invalidURL
@@ -212,12 +312,21 @@ class AuthService {
                 throw AuthError.invalidResponse
             }
             
+            logger.debug("Logout response status code: \(httpResponse.statusCode)")
+            
+            if let responseString = String(data: responseData, encoding: .utf8) {
+                logger.debug("Logout response body: \(responseString)")
+            }
+            
             guard httpResponse.statusCode == 200 else {
+                logger.error("Logout failed with status code: \(httpResponse.statusCode)")
                 throw AuthError.unauthorized
             }
             
             let decoder = JSONDecoder()
-            return try decoder.decode(LogoutResponse.self, from: responseData)
+            let logoutResponse = try decoder.decode(LogoutResponse.self, from: responseData)
+            logger.info("Logout successful")
+            return logoutResponse
         } catch let error as DecodingError {
             throw AuthError.decodingError(error)
         } catch {
