@@ -1,75 +1,23 @@
 import SwiftUI
 import UIKit
 
-struct CustomTextField: UIViewRepresentable {
-    @Binding var text: String
-    var placeholder: String
-    var isSecure: Bool
-    var returnKeyType: UIReturnKeyType
-    var onSubmit: () -> Void
-    
-    func makeUIView(context: Context) -> UITextField {
-        let textField = UITextField()
-        textField.delegate = context.coordinator
-        textField.placeholder = placeholder
-        textField.isSecureTextEntry = isSecure
-        textField.returnKeyType = returnKeyType
-        textField.autocapitalizationType = .none
-        textField.autocorrectionType = .no
-        textField.borderStyle = .roundedRect
-        textField.clearButtonMode = .whileEditing
-        textField.backgroundColor = .systemBackground
-        textField.tintColor = .systemBlue
-        return textField
-    }
-    
-    func updateUIView(_ uiView: UITextField, context: Context) {
-        // Only update text if it's different to avoid cursor position reset
-        if uiView.text != text {
-            uiView.text = text
-        }
-        // Update secure text entry state
-        uiView.isSecureTextEntry = isSecure
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-    
-    class Coordinator: NSObject, UITextFieldDelegate {
-        var parent: CustomTextField
-        
-        init(_ parent: CustomTextField) {
-            self.parent = parent
-        }
-        
-        func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
-            if let text = textField.text,
-               let textRange = Range(range, in: text) {
-                let updatedText = text.replacingCharacters(in: textRange, with: string)
-                parent.text = updatedText
-            }
-            return true
-        }
-        
-        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-            parent.onSubmit()
-            return true
-        }
-    }
-}
-
 struct LoginView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @State private var username = ""
+    @State private var email = ""
     @State private var password = ""
+    @State private var confirmPassword = ""
     @State private var isPasswordVisible = false
+    @State private var isConfirmPasswordVisible = false
     @State private var keyboardHeight: CGFloat = 0
+    @State private var isRegisterMode = false
     @FocusState private var focusedField: Field?
     
     enum Field {
         case username
+        case email
         case password
+        case confirmPassword
     }
     
     var body: some View {
@@ -85,7 +33,15 @@ struct LoginView: View {
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
                     
-                    // Login Form
+                    // Mode Toggle
+                    Picker("Mode", selection: $isRegisterMode) {
+                        Text("Login").tag(false)
+                        Text("Register").tag(true)
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .padding(.horizontal, 30)
+                    
+                    // Form
                     VStack(spacing: 15) {
                         // Username Field
                         CustomTextField(
@@ -94,9 +50,28 @@ struct LoginView: View {
                             isSecure: false,
                             returnKeyType: .next
                         ) {
-                            focusedField = .password
+                            if isRegisterMode {
+                                focusedField = .email
+                            } else {
+                                focusedField = .password
+                            }
                         }
                         .frame(height: 44)
+                        
+                        // Email Field (only for register)
+                        if isRegisterMode {
+                            CustomTextField(
+                                text: $email,
+                                placeholder: "Email",
+                                isSecure: false,
+                                returnKeyType: .next
+                            ) {
+                                focusedField = .password
+                            }
+                            .frame(height: 44)
+                            .keyboardType(.emailAddress)
+                            .autocapitalization(.none)
+                        }
                         
                         // Password Field
                         HStack {
@@ -104,11 +79,15 @@ struct LoginView: View {
                                 text: $password,
                                 placeholder: "Password",
                                 isSecure: !isPasswordVisible,
-                                returnKeyType: .done
+                                returnKeyType: isRegisterMode ? .next : .done
                             ) {
-                                focusedField = nil
-                                Task {
-                                    await authViewModel.login(username: username, password: password)
+                                if isRegisterMode {
+                                    focusedField = .confirmPassword
+                                } else {
+                                    focusedField = nil
+                                    Task {
+                                        await authViewModel.login(username: username, password: password)
+                                    }
                                 }
                             }
                             .frame(height: 44)
@@ -123,6 +102,35 @@ struct LoginView: View {
                             }
                         }
                         
+                        // Confirm Password Field (only for register)
+                        if isRegisterMode {
+                            HStack {
+                                CustomTextField(
+                                    text: $confirmPassword,
+                                    placeholder: "Confirm Password",
+                                    isSecure: !isConfirmPasswordVisible,
+                                    returnKeyType: .done
+                                ) {
+                                    focusedField = nil
+                                    if validateForm() {
+                                        Task {
+                                            await authViewModel.register(username: username, email: email, password: password)
+                                        }
+                                    }
+                                }
+                                .frame(height: 44)
+                                
+                                Button(action: {
+                                    isConfirmPasswordVisible.toggle()
+                                }) {
+                                    Image(systemName: isConfirmPasswordVisible ? "eye.slash.fill" : "eye.fill")
+                                        .foregroundColor(.gray)
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
+                                }
+                            }
+                        }
+                        
                         // Error Message
                         if let errorMessage = authViewModel.errorMessage {
                             Text(errorMessage)
@@ -130,24 +138,35 @@ struct LoginView: View {
                                 .font(.caption)
                         }
                         
-                        // Login Button
+                        // Action Button
                         Button(action: {
                             focusedField = nil
-                            Task {
-                                await authViewModel.login(username: username, password: password)
+                            if isRegisterMode {
+                                if validateForm() {
+                                    Task {
+                                        await authViewModel.register(username: username, email: email, password: password)
+                                    }
+                                } else {
+                                    // Show validation error
+                                    authViewModel.errorMessage = "Please fill all fields correctly. Password must be at least 6 characters and passwords must match."
+                                }
+                            } else {
+                                Task {
+                                    await authViewModel.login(username: username, password: password)
+                                }
                             }
                         }) {
                             if authViewModel.isLoading {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             } else {
-                                Text("Login")
+                                Text(isRegisterMode ? "Create Account" : "Login")
                                     .fontWeight(.semibold)
                             }
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(Color.blue)
+                        .background(isRegisterMode ? Color.green : Color.blue)
                         .foregroundColor(.white)
                         .cornerRadius(10)
                         .disabled(authViewModel.isLoading)
@@ -163,7 +182,7 @@ struct LoginView: View {
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .onTapGesture {
                 focusedField = nil
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                hideKeyboard()
             }
             .onAppear {
                 NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { notification in
@@ -176,7 +195,39 @@ struct LoginView: View {
                     keyboardHeight = 0
                 }
             }
+            .onChange(of: isRegisterMode) { _ in
+                // Clear form when switching modes
+                username = ""
+                email = ""
+                password = ""
+                confirmPassword = ""
+                authViewModel.errorMessage = nil
+                hideKeyboard()
+            }
         }
+    }
+    
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
+    private func validateForm() -> Bool {
+        guard isRegisterMode else { return true }
+        
+        // Basic validation
+        guard !username.isEmpty else { return false }
+        guard !email.isEmpty else { return false }
+        guard !password.isEmpty else { return false }
+        guard !confirmPassword.isEmpty else { return false }
+        guard password == confirmPassword else { return false }
+        guard password.count >= 6 else { return false }
+        
+        // Email validation - more permissive regex
+        let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+        let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
+        guard emailPredicate.evaluate(with: email) else { return false }
+        
+        return true
     }
 }
 

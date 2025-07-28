@@ -238,6 +238,21 @@ class SecureStorageManager {
         }
     }
     
+    func saveAuthData(_ authData: RegisterResponse) {
+        logger.info("Saving register auth data to Keychain")
+        let encoder = JSONEncoder()
+        do {
+            let data = try encoder.encode(authData)
+            if saveToKeychain(key: "authData", data: data) {
+                logger.info("Register auth data saved successfully")
+            } else {
+                logger.error("Failed to save register auth data")
+            }
+        } catch {
+            logger.error("Failed to encode register auth data: \(error.localizedDescription)")
+        }
+    }
+    
     func getAuthData() -> LoginResponse? {
         logger.info("Retrieving auth data from Keychain")
         guard let data = loadFromKeychain(key: "authData") else {
