@@ -10,8 +10,9 @@ class StatsHistoryManager: ObservableObject {
     @Published var refreshTrigger: UUID = UUID()
     private let saveKey = "StatsHistory"
     
-    // Reference to HealthManager
+    // Reference to HealthManager and MetricSyncManager
     private let healthManager = HealthManager()
+    private let metricSyncManager = MetricSyncManager.shared
     
     // Make init private to enforce singleton pattern
     private init() {
@@ -44,6 +45,19 @@ class StatsHistoryManager: ObservableObject {
                     print("❌ Error syncing historical data to Apple Health: \(error.localizedDescription)")
                 }
             }
+        }
+    }
+    
+    // Function to sync all entries to backend database
+    func syncAllEntriesToBackend() {
+        print("📤 Starting sync of all entries to backend database")
+        
+        // Get all non-calculated entries
+        let entriesToSync = entries.filter { !$0.type.isCalculated }
+        print("📤 Found \(entriesToSync.count) entries to sync to backend")
+        
+        Task { @MainActor in
+            metricSyncManager.syncAllEntries(entriesToSync)
         }
     }
     
@@ -167,6 +181,14 @@ class StatsHistoryManager: ObservableObject {
             saveEntries()
         }
         
+        // Sync to backend database (for all non-calculated metrics)
+        if !entry.type.isCalculated {
+            print("📤 Syncing entry to backend: \(entry.type)")
+            Task { @MainActor in
+                metricSyncManager.syncEntry(entry, operation: .create)
+            }
+        }
+        
         // If this is a manual entry and not from Apple Health, sync to HealthKit
         if entry.source == .manual && !entry.type.isCalculated {
             print("⭐️ Attempting to sync manual entry to HealthKit")
@@ -198,6 +220,14 @@ class StatsHistoryManager: ObservableObject {
         }
         
         entries.removeAll { $0.id == entry.id }
+        
+        // Sync to backend database (for all non-calculated metrics)
+        if !entry.type.isCalculated {
+            print("📤 Syncing deleted entry to backend: \(entry.type)")
+            Task { @MainActor in
+                metricSyncManager.syncEntry(entry, operation: .delete)
+            }
+        }
         
         // If this is a weight or height entry, recalculate BMI entries
         if entry.type == .weight || entry.type == .height {
@@ -232,6 +262,14 @@ class StatsHistoryManager: ObservableObject {
         if let index = entries.firstIndex(where: { $0.id == entry.id }) {
             let oldEntry = entries[index]
             entries[index] = entry
+            
+            // Sync to backend database (for all non-calculated metrics)
+            if !entry.type.isCalculated {
+                print("📤 Syncing updated entry to backend: \(entry.type)")
+                Task { @MainActor in
+                    metricSyncManager.syncEntry(entry, operation: .update)
+                }
+            }
             
             // If this is a manual entry and we're authorized, update in HealthKit
             if oldEntry.source == .manual && entry.type != .bmi && healthManager.isAuthorized {

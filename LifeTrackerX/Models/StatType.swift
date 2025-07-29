@@ -1,6 +1,6 @@
 import Foundation
 
-enum StatType: String, Codable, CaseIterable, Identifiable {
+enum StatType: String, Codable, CaseIterable, Identifiable, CustomStringConvertible {
     case weight, height, bodyFat, bmi, waist, bicep, chest, thigh, shoulder, glutes
     case calf, neck, forearm
     case lbm, fm, ffmi, bmr, bsa  // Added new calculated measurements
@@ -93,5 +93,9 @@ enum StatType: String, Codable, CaseIterable, Identifiable {
         default:
             return false
         }
+    }
+    
+    var description: String {
+        return self.rawValue
     }
 }
