@@ -32,6 +32,23 @@ enum BackendMetricType: Int, CaseIterable {
         default: return nil // BMI, LBM, FM, FFMI, BMR, BSA are calculated
         }
     }
+    
+    func toStatType() -> StatType {
+        switch self {
+        case .weight: return .weight
+        case .height: return .height
+        case .bodyFat: return .bodyFat
+        case .waist: return .waist
+        case .bicep: return .bicep
+        case .chest: return .chest
+        case .thigh: return .thigh
+        case .shoulder: return .shoulder
+        case .glutes: return .glutes
+        case .calf: return .calf
+        case .neck: return .neck
+        case .forearm: return .forearm
+        }
+    }
 }
 
 // MARK: - Sync Operation Types
@@ -110,6 +127,27 @@ struct MetricResponse: Codable {
     let message: String?
     let entryId: Int?
     let error: String?
+}
+
+// MARK: - Metrics Fetching Models
+struct MetricsListResponse: Codable {
+    let success: Bool
+    let entries: [MetricData]
+    let total: Int
+    let error: String?
+}
+
+struct MetricData: Codable {
+    let id: Int
+    let metric_type_id: Int
+    let value: String // Server returns value as string
+    let date: String
+    let is_apple_health: Bool
+    
+    // Optional fields that might not be present
+    let user_id: Int?
+    let created_at: String?
+    let updated_at: String?
 }
 
 // MARK: - Sync Status

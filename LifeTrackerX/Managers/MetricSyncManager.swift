@@ -275,4 +275,41 @@ class MetricSyncManager: ObservableObject {
     func getPendingOperations() -> [SyncOperation] {
         return pendingOperations
     }
+    
+    // MARK: - Data Fetching
+    func fetchUserMetrics() async throws -> [StatEntry] {
+        logger.info("Fetching user metrics from server")
+        
+        let response: MetricsListResponse = try await networkManager.makeAuthenticatedRequest(
+            "/api/metrics",
+            method: "GET"
+        )
+        
+        if !response.success {
+            throw NSError(domain: "MetricSync", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: response.error ?? "Failed to fetch metrics"
+            ])
+        }
+        
+        let entries = response.entries.map { metric in
+            StatEntry(
+                id: UUID(), // Generate new UUID for local storage
+                date: Self.dateFormatter.date(from: metric.date) ?? Date(),
+                value: Double(metric.value) ?? 0.0, // Convert string to Double
+                type: BackendMetricType(rawValue: metric.metric_type_id)?.toStatType() ?? .weight,
+                source: metric.is_apple_health ? .appleHealth : .manual,
+                backendId: metric.id
+            )
+        }
+        
+        logger.info("Successfully fetched \(entries.count) metrics from server")
+        return entries
+    }
+    
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+        formatter.timeZone = TimeZone(abbreviation: "UTC")
+        return formatter
+    }()
 } 

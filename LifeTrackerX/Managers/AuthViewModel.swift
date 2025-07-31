@@ -45,6 +45,9 @@ class AuthViewModel: ObservableObject {
             user = response.user
             isAuthenticated = true
             logger.info("Login process completed successfully")
+            
+            // Load user's metrics from server
+            await loadUserDataFromServer()
         } catch {
             logger.error("Login failed: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
@@ -77,6 +80,9 @@ class AuthViewModel: ObservableObject {
             user = response.user
             isAuthenticated = true
             logger.info("Registration process completed successfully")
+            
+            // Load user's metrics from server (will be empty for new users)
+            await loadUserDataFromServer()
         } catch {
             logger.error("Registration failed: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
@@ -102,9 +108,8 @@ class AuthViewModel: ObservableObject {
             logger.debug("Using access token: \(accessToken.prefix(10))...")
             _ = try await authService.logout(deviceId: deviceId, userId: userId, accessToken: accessToken)
             
-            // Clear stored data
-            secureStorage.clearAuthData()
-            logger.info("Successfully cleared authentication data")
+            // Clear all local data
+            await clearAllLocalData()
             
             isAuthenticated = false
             user = nil
@@ -115,6 +120,40 @@ class AuthViewModel: ObservableObject {
         }
         
         isLoading = false
+    }
+    
+    private func clearAllLocalData() async {
+        logger.info("Clearing all local data for logout")
+        
+        // Clear authentication data
+        secureStorage.clearAuthData()
+        logger.info("Cleared authentication data")
+        
+        // Clear all metric entries
+        StatsHistoryManager.shared.clearAllEntries()
+        logger.info("Cleared all metric entries")
+        
+        // Clear all progress photos
+        ProgressPhotoManager.shared.clearAllPhotos()
+        logger.info("Cleared all progress photos")
+        
+        // Clear all pending sync operations
+        MetricSyncManager.shared.clearAllPendingOperations()
+        logger.info("Cleared all pending sync operations")
+        
+        logger.info("All local data cleared successfully")
+    }
+    
+    private func loadUserDataFromServer() async {
+        logger.info("Loading user data from server")
+        
+        do {
+            // Load metrics from server
+            await StatsHistoryManager.shared.loadMetricsFromServer()
+            logger.info("Successfully loaded user metrics from server")
+        } catch {
+            logger.error("Failed to load user data from server: \(error.localizedDescription)")
+        }
     }
     
     private func checkExistingSession() async {
@@ -135,6 +174,9 @@ class AuthViewModel: ObservableObject {
                 user = response.user
                 isAuthenticated = true
                 logger.info("Existing session is valid for user: \(response.user.username)")
+                
+                // Load user's metrics from server
+                await loadUserDataFromServer()
             } else {
                 secureStorage.clearAuthData()
                 logger.info("Existing session is invalid, cleared authentication data")

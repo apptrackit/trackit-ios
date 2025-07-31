@@ -221,10 +221,10 @@ struct DashboardView: View {
                 HStack(spacing: 12) {
                     SyncStatusView()
                     
-                    Button(action: {
-                        showingAddEntrySheet = true
-                    }) {
-                        Image(systemName: "plus")
+                Button(action: {
+                    showingAddEntrySheet = true
+                }) {
+                    Image(systemName: "plus")
                     }
                 }
             }

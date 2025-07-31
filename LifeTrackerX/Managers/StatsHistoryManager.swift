@@ -375,4 +375,31 @@ class StatsHistoryManager: ObservableObject {
         saveEntries()
         triggerUpdate()
     }
+    
+    // MARK: - Server Data Loading
+    func loadMetricsFromServer() async {
+        print("📱 Loading metrics from server...")
+        
+        do {
+            let serverEntries = try await MetricSyncManager.shared.fetchUserMetrics()
+            
+            // Clear existing entries and add server entries
+            entries = serverEntries
+            
+            // Recalculate BMI entries
+            recalculateAllDerivedValues()
+            
+            // Save to local storage
+            saveEntries()
+            
+            // Trigger UI update
+            triggerUpdate()
+            
+            print("📱 Successfully loaded \(serverEntries.count) metrics from server")
+        } catch {
+            print("❌ Failed to load metrics from server: \(error.localizedDescription)")
+            // Don't throw error - just log it and continue with empty data
+            // This allows the app to work even if the endpoint doesn't exist yet
+        }
+    }
 }
