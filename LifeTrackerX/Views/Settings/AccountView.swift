@@ -396,6 +396,14 @@ struct HealthAccessView: View {
                             Text("Last sync: \(healthManager.lastUpdateTimestamp.formatted())")
                                 .font(.caption)
                             
+                            Button("Sync All to Backend") {
+                                Task {
+                                    historyManager.syncAllEntriesToBackend()
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .padding(.vertical, 4)
+                            
                             Text("Weight entries: \(historyManager.getEntries(for: .weight, source: .appleHealth).count)")
                             ForEach(historyManager.getEntries(for: .weight, source: .appleHealth).prefix(5), id: \.id) { entry in
                                 Text("- \(entry.date.formatted()): \(String(format: "%.1f", entry.value)) kg")

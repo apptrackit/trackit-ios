@@ -45,6 +45,11 @@ class AuthViewModel: ObservableObject {
             user = response.user
             isAuthenticated = true
             logger.info("Login process completed successfully")
+            
+            // Load user's metrics from server in background (non-blocking)
+            Task {
+                await loadUserDataFromServer()
+            }
         } catch {
             logger.error("Login failed: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
@@ -77,6 +82,11 @@ class AuthViewModel: ObservableObject {
             user = response.user
             isAuthenticated = true
             logger.info("Registration process completed successfully")
+            
+            // Load user's metrics from server in background (non-blocking)
+            Task {
+                await loadUserDataFromServer()
+            }
         } catch {
             logger.error("Registration failed: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
@@ -102,9 +112,8 @@ class AuthViewModel: ObservableObject {
             logger.debug("Using access token: \(accessToken.prefix(10))...")
             _ = try await authService.logout(deviceId: deviceId, userId: userId, accessToken: accessToken)
             
-            // Clear stored data
-            secureStorage.clearAuthData()
-            logger.info("Successfully cleared authentication data")
+            // Clear all local data
+            await clearAllLocalData()
             
             isAuthenticated = false
             user = nil
@@ -117,9 +126,48 @@ class AuthViewModel: ObservableObject {
         isLoading = false
     }
     
+    private func clearAllLocalData() async {
+        logger.info("Clearing all local data for logout")
+        
+        // Clear authentication data
+        secureStorage.clearAuthData()
+        logger.info("Cleared authentication data")
+        
+        // Clear all metric entries
+        StatsHistoryManager.shared.clearAllEntries()
+        logger.info("Cleared all metric entries")
+        
+        // Clear all progress photos
+        ProgressPhotoManager.shared.clearAllPhotos()
+        logger.info("Cleared all progress photos")
+        
+        // Clear all pending sync operations
+        MetricSyncManager.shared.clearAllPendingOperations()
+        logger.info("Cleared all pending sync operations")
+        
+        logger.info("All local data cleared successfully")
+    }
+    
+    private func loadUserDataFromServer() async {
+        logger.info("Loading user data from server")
+        
+        // Load metrics from server - this function handles its own errors
+        await StatsHistoryManager.shared.loadMetricsFromServer()
+        logger.info("User data loading completed (server sync may have failed, but app continues)")
+    }
+    
     private func checkExistingSession() async {
         logger.info("Checking existing session")
         isInitializing = true
+        
+        // First, try to restore user from local storage for offline mode
+        if let authData = secureStorage.getAuthData() {
+            user = authData.user
+            isAuthenticated = true
+            logger.info("Restored user from local storage: \(authData.user.username)")
+        }
+        
+        // Then try to validate with server (if online)
         do {
             guard let accessToken = secureStorage.getAccessToken() else {
                 logger.info("No existing session found")
@@ -132,17 +180,45 @@ class AuthViewModel: ObservableObject {
             let response = try await authService.checkSession(accessToken: accessToken)
             
             if response.isAuthenticated {
-                user = response.user
-                isAuthenticated = true
-                logger.info("Existing session is valid for user: \(response.user.username)")
+                if let responseUser = response.user {
+                    user = responseUser
+                    isAuthenticated = true
+                    logger.info("Existing session is valid for user: \(responseUser.username)")
+                    
+                    // Load user's metrics from server in background (non-blocking)
+                    Task {
+                        await loadUserDataFromServer()
+                    }
+                } else {
+                    // Server says authenticated but no user data - this shouldn't happen
+                    logger.error("Server says authenticated but no user data provided")
+                    secureStorage.clearAuthData()
+                    user = nil
+                    isAuthenticated = false
+                }
             } else {
+                // Server says session is invalid, clear auth data
                 secureStorage.clearAuthData()
+                user = nil
+                isAuthenticated = false
                 logger.info("Existing session is invalid, cleared authentication data")
             }
         } catch {
-            logger.error("Session check failed: \(error.localizedDescription)")
-            secureStorage.clearAuthData()
+            logger.error("Session check failed (likely offline): \(error.localizedDescription)")
+            
+            // If we have local user data, allow offline mode
+            if self.user != nil {
+                logger.info("Allowing offline mode for user: \(self.user?.username ?? "unknown")")
+                // Don't clear auth data - let user continue in offline mode
+            } else {
+                // No local user data and can't reach server, clear everything
+                secureStorage.clearAuthData()
+                user = nil
+                isAuthenticated = false
+                logger.info("No local user data and server unreachable, cleared authentication data")
+            }
         }
+        
         isInitializing = false
     }
     

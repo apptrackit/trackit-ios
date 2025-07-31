@@ -218,10 +218,14 @@ struct DashboardView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
+                HStack(spacing: 12) {
+                    SyncStatusView()
+                    
                 Button(action: {
                     showingAddEntrySheet = true
                 }) {
                     Image(systemName: "plus")
+                    }
                 }
             }
             

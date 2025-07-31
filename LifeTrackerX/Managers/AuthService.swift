@@ -35,9 +35,9 @@ class AuthService {
     
     private init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 10 // 10 seconds timeout
-        config.timeoutIntervalForResource = 30 // 30 seconds timeout for the entire resource
-        config.waitsForConnectivity = true // Wait for connectivity if offline
+        config.timeoutIntervalForRequest = 5 // 5 seconds timeout
+        config.timeoutIntervalForResource = 10 // 10 seconds timeout for the entire resource
+        config.waitsForConnectivity = false // Don't wait for connectivity - fail fast when offline
         self.session = URLSession(configuration: config)
     }
     
@@ -54,7 +54,7 @@ class AuthService {
         request.httpMethod = method
         request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 10 // 10 seconds timeout for this specific request
+        request.timeoutInterval = 5 // 5 seconds timeout for this specific request
         
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         
@@ -234,12 +234,25 @@ class AuthService {
                 throw AuthError.invalidResponse
             }
             
+            // Log response for debugging
+            logger.debug("Session check response status code: \(httpResponse.statusCode)")
+            if let responseString = String(data: responseData, encoding: .utf8) {
+                logger.debug("Session check response body: \(responseString)")
+            }
+            
             guard httpResponse.statusCode == 200 else {
                 throw AuthError.unauthorized
             }
             
             let decoder = JSONDecoder()
-            return try decoder.decode(SessionCheckResponse.self, from: responseData)
+            let sessionResponse = try decoder.decode(SessionCheckResponse.self, from: responseData)
+            
+            // Check if the server says the session is invalid (even with 200 status)
+            if !sessionResponse.isAuthenticated {
+                logger.info("Session check returned 200 but isAuthenticated is false - token is invalid")
+            }
+            
+            return sessionResponse
         } catch let error as URLError {
             logger.error("Network error during session check: \(error.localizedDescription)")
             switch error.code {
