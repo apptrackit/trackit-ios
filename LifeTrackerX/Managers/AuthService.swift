@@ -35,9 +35,9 @@ class AuthService {
     
     private init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 10 // 10 seconds timeout
-        config.timeoutIntervalForResource = 30 // 30 seconds timeout for the entire resource
-        config.waitsForConnectivity = true // Wait for connectivity if offline
+        config.timeoutIntervalForRequest = 5 // 5 seconds timeout
+        config.timeoutIntervalForResource = 10 // 10 seconds timeout for the entire resource
+        config.waitsForConnectivity = false // Don't wait for connectivity - fail fast when offline
         self.session = URLSession(configuration: config)
     }
     
@@ -54,7 +54,7 @@ class AuthService {
         request.httpMethod = method
         request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 10 // 10 seconds timeout for this specific request
+        request.timeoutInterval = 5 // 5 seconds timeout for this specific request
         
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         
