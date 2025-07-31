@@ -234,12 +234,25 @@ class AuthService {
                 throw AuthError.invalidResponse
             }
             
+            // Log response for debugging
+            logger.debug("Session check response status code: \(httpResponse.statusCode)")
+            if let responseString = String(data: responseData, encoding: .utf8) {
+                logger.debug("Session check response body: \(responseString)")
+            }
+            
             guard httpResponse.statusCode == 200 else {
                 throw AuthError.unauthorized
             }
             
             let decoder = JSONDecoder()
-            return try decoder.decode(SessionCheckResponse.self, from: responseData)
+            let sessionResponse = try decoder.decode(SessionCheckResponse.self, from: responseData)
+            
+            // Check if the server says the session is invalid (even with 200 status)
+            if !sessionResponse.isAuthenticated {
+                logger.info("Session check returned 200 but isAuthenticated is false - token is invalid")
+            }
+            
+            return sessionResponse
         } catch let error as URLError {
             logger.error("Network error during session check: \(error.localizedDescription)")
             switch error.code {

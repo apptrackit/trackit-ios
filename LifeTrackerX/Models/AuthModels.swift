@@ -63,8 +63,8 @@ struct SessionCheckResponse: Codable {
     let success: Bool
     let isAuthenticated: Bool
     let message: String
-    let deviceId: String
-    let user: User
+    let deviceId: String?
+    let user: User?
 }
 
 struct RefreshTokenRequest: Codable {

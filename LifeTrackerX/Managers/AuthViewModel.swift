@@ -180,13 +180,21 @@ class AuthViewModel: ObservableObject {
             let response = try await authService.checkSession(accessToken: accessToken)
             
             if response.isAuthenticated {
-                user = response.user
-                isAuthenticated = true
-                logger.info("Existing session is valid for user: \(response.user.username)")
-                
-                // Load user's metrics from server in background (non-blocking)
-                Task {
-                    await loadUserDataFromServer()
+                if let responseUser = response.user {
+                    user = responseUser
+                    isAuthenticated = true
+                    logger.info("Existing session is valid for user: \(responseUser.username)")
+                    
+                    // Load user's metrics from server in background (non-blocking)
+                    Task {
+                        await loadUserDataFromServer()
+                    }
+                } else {
+                    // Server says authenticated but no user data - this shouldn't happen
+                    logger.error("Server says authenticated but no user data provided")
+                    secureStorage.clearAuthData()
+                    user = nil
+                    isAuthenticated = false
                 }
             } else {
                 // Server says session is invalid, clear auth data
