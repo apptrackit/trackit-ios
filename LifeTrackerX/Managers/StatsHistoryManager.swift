@@ -383,17 +383,20 @@ class StatsHistoryManager: ObservableObject {
         do {
             let serverEntries = try await MetricSyncManager.shared.fetchUserMetrics()
             
-            // Clear existing entries and add server entries
-            entries = serverEntries
-            
-            // Recalculate BMI entries
-            recalculateAllDerivedValues()
-            
-            // Save to local storage
-            saveEntries()
-            
-            // Trigger UI update
-            triggerUpdate()
+            // Update UI on main thread
+            await MainActor.run {
+                // Clear existing entries and add server entries
+                entries = serverEntries
+                
+                // Recalculate BMI entries
+                recalculateAllDerivedValues()
+                
+                // Save to local storage
+                saveEntries()
+                
+                // Trigger UI update
+                triggerUpdate()
+            }
             
             print("📱 Successfully loaded \(serverEntries.count) metrics from server")
         } catch {

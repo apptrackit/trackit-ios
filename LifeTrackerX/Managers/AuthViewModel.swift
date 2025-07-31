@@ -46,8 +46,10 @@ class AuthViewModel: ObservableObject {
             isAuthenticated = true
             logger.info("Login process completed successfully")
             
-            // Load user's metrics from server
-            await loadUserDataFromServer()
+            // Load user's metrics from server in background (non-blocking)
+            Task {
+                await loadUserDataFromServer()
+            }
         } catch {
             logger.error("Login failed: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
@@ -81,8 +83,10 @@ class AuthViewModel: ObservableObject {
             isAuthenticated = true
             logger.info("Registration process completed successfully")
             
-            // Load user's metrics from server (will be empty for new users)
-            await loadUserDataFromServer()
+            // Load user's metrics from server in background (non-blocking)
+            Task {
+                await loadUserDataFromServer()
+            }
         } catch {
             logger.error("Registration failed: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
@@ -147,18 +151,23 @@ class AuthViewModel: ObservableObject {
     private func loadUserDataFromServer() async {
         logger.info("Loading user data from server")
         
-        do {
-            // Load metrics from server
-            await StatsHistoryManager.shared.loadMetricsFromServer()
-            logger.info("Successfully loaded user metrics from server")
-        } catch {
-            logger.error("Failed to load user data from server: \(error.localizedDescription)")
-        }
+        // Load metrics from server - this function handles its own errors
+        await StatsHistoryManager.shared.loadMetricsFromServer()
+        logger.info("User data loading completed (server sync may have failed, but app continues)")
     }
     
     private func checkExistingSession() async {
         logger.info("Checking existing session")
         isInitializing = true
+        
+        // First, try to restore user from local storage for offline mode
+        if let authData = secureStorage.getAuthData() {
+            user = authData.user
+            isAuthenticated = true
+            logger.info("Restored user from local storage: \(authData.user.username)")
+        }
+        
+        // Then try to validate with server (if online)
         do {
             guard let accessToken = secureStorage.getAccessToken() else {
                 logger.info("No existing session found")
@@ -175,16 +184,33 @@ class AuthViewModel: ObservableObject {
                 isAuthenticated = true
                 logger.info("Existing session is valid for user: \(response.user.username)")
                 
-                // Load user's metrics from server
-                await loadUserDataFromServer()
+                // Load user's metrics from server in background (non-blocking)
+                Task {
+                    await loadUserDataFromServer()
+                }
             } else {
+                // Server says session is invalid, clear auth data
                 secureStorage.clearAuthData()
+                user = nil
+                isAuthenticated = false
                 logger.info("Existing session is invalid, cleared authentication data")
             }
         } catch {
-            logger.error("Session check failed: \(error.localizedDescription)")
-            secureStorage.clearAuthData()
+            logger.error("Session check failed (likely offline): \(error.localizedDescription)")
+            
+            // If we have local user data, allow offline mode
+            if self.user != nil {
+                logger.info("Allowing offline mode for user: \(self.user?.username ?? "unknown")")
+                // Don't clear auth data - let user continue in offline mode
+            } else {
+                // No local user data and can't reach server, clear everything
+                secureStorage.clearAuthData()
+                user = nil
+                isAuthenticated = false
+                logger.info("No local user data and server unreachable, cleared authentication data")
+            }
         }
+        
         isInitializing = false
     }
     
