@@ -1,13 +1,16 @@
 import SwiftUI
 import Charts
 
-struct ContentView: View {
+struct DashboardView: View {
     @StateObject private var historyManager = StatsHistoryManager.shared
     @StateObject private var healthManager = HealthManager()
     @State private var showingAddEntrySheet = false
     @State private var showingAccountSheet = false
     @State private var selectedTimeFrame: TimeFrame = .sixMonths
     @State private var showingAddPhotoSheet = false
+    @State private var hasPerformedInitialSync = false
+    @State private var isRefreshing = false
+    @EnvironmentObject var authViewModel: AuthViewModel
     
     // Computed properties to get latest values or nil
     private var weight: Double? {
@@ -215,10 +218,14 @@ struct ContentView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
+                HStack(spacing: 12) {
+                    SyncStatusView()
+                    
                 Button(action: {
                     showingAddEntrySheet = true
                 }) {
                     Image(systemName: "plus")
+                    }
                 }
             }
             
@@ -243,24 +250,47 @@ struct ContentView: View {
             )
         }
         .onAppear {
-            // Sync with Apple Health when the app launches
-            if healthManager.isAuthorized {
-                healthManager.importAllHealthData(historyManager: historyManager) { _ in
-                    print("Initial sync completed on app launch")
+            // Only perform initial sync once
+            if !hasPerformedInitialSync && healthManager.isAuthorized {
+                hasPerformedInitialSync = true
+                Task {
+                    await refreshData()
                 }
             }
         }
     }
     
     private func refreshData() async {
+        // Prevent multiple simultaneous refreshes
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        
         if healthManager.isAuthorized {
-            // Start refresh in background without waiting
-            Task(priority: .background) {
-                healthManager.importAllHealthData(historyManager: historyManager) { _ in
-                    print("Data refresh completed")
+            do {
+                // Create a continuation that can only be resumed once
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    var hasResumed = false
+                    
+                    healthManager.importAllHealthData(historyManager: historyManager) { success in
+                        // Ensure we only resume once
+                        guard !hasResumed else { return }
+                        hasResumed = true
+                        
+                        if success {
+                            print("Data refresh completed successfully")
+                            continuation.resume()
+                        } else {
+                            print("Data refresh failed")
+                            continuation.resume(throwing: NSError(domain: "DashboardView", code: -1, userInfo: [NSLocalizedDescriptionKey: "Data refresh failed"]))
+                        }
+                    }
                 }
+            } catch {
+                print("Error during data refresh: \(error.localizedDescription)")
             }
         }
+        
+        isRefreshing = false
     }
 }
 
@@ -304,7 +334,7 @@ struct SummaryCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-        .cornerRadius(15)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -316,32 +346,30 @@ struct ProgressChartView: View {
     let statType: StatType
     let timeFrame: TimeFrame
     
-    private var data: [StatEntry] {
+    private var chartData: [StatEntry] {
         let calendar = Calendar.current
         let now = Date()
         
-        // Get all entries first
+        // Get all entries and sort by date
         let allEntries = historyManager.getEntries(for: statType)
             .sorted { $0.date < $1.date }
         
         // If no entries, return empty array
-        if allEntries.isEmpty {
-            return []
-        }
+        guard !allEntries.isEmpty else { return [] }
         
         // Calculate the date range based on timeFrame
         let startDate: Date
         switch timeFrame {
         case .weekly:
-            startDate = calendar.date(byAdding: .day, value: -7, to: now)!
+            startDate = calendar.date(byAdding: .day, value: -7, to: now) ?? now
         case .monthly:
-            startDate = calendar.date(byAdding: .day, value: -30, to: now)!
+            startDate = calendar.date(byAdding: .day, value: -30, to: now) ?? now
         case .sixMonths:
-            startDate = calendar.date(byAdding: .month, value: -6, to: now)!
+            startDate = calendar.date(byAdding: .month, value: -6, to: now) ?? now
         case .yearly:
-            startDate = calendar.date(byAdding: .year, value: -1, to: now)!
+            startDate = calendar.date(byAdding: .year, value: -1, to: now) ?? now
         case .allTime:
-            startDate = .distantPast
+            return allEntries // Return all data for all time
         }
         
         // Filter entries for the selected timeFrame
@@ -349,46 +377,71 @@ struct ProgressChartView: View {
         
         // If no entries in the selected timeFrame, return the last 5 entries
         if filteredEntries.isEmpty {
-            return Array(allEntries.suffix(5))
+            return Array(allEntries.suffix(min(5, allEntries.count)))
         }
         
         return filteredEntries
     }
     
     private var yAxisRange: ClosedRange<Double> {
-        guard !data.isEmpty else { return 0...100 }
+        guard !chartData.isEmpty else { return 0...100 }
         
-        let values = data.map { $0.value }
+        let values = chartData.map { $0.value }
         let min = values.min() ?? 0
         let max = values.max() ?? 100
-        let padding = (max - min) * 0.1 // 10% padding
         
+        // If all values are the same, create a range around that value
+        if min == max {
+            let padding = max * 0.1 // 10% padding
+            return (max - padding)...(max + padding)
+        }
+        
+        let padding = (max - min) * 0.15 // 15% padding for better visualization
         return (min - padding)...(max + padding)
     }
     
-    private func getDateStride() -> Calendar.Component {
+    private var xAxisDates: [Date] {
+        guard !chartData.isEmpty else { return [] }
+        
+        let calendar = Calendar.current
+        let startDate = chartData.first!.date
+        let endDate = chartData.last!.date
+        
         switch timeFrame {
         case .weekly:
-            return .day
+            // Show every day of the week
+            return (0..<7).compactMap { dayOffset in
+                calendar.date(byAdding: .day, value: -6 + dayOffset, to: endDate)
+            }
         case .monthly:
-            return .day
+            // Show 4 evenly spaced dates
+            return (0..<4).compactMap { index in
+                let daysOffset = Int(Double(index) * 30.0 / 3.0)
+                return calendar.date(byAdding: .day, value: -30 + daysOffset, to: endDate)
+            }
         case .sixMonths:
-            return .month
+            // Show 6 months
+            return (0..<6).compactMap { monthOffset in
+                calendar.date(byAdding: .month, value: -5 + monthOffset, to: endDate)
+            }
         case .yearly:
-            return .month
+            // Show 12 months
+            return (0..<12).compactMap { monthOffset in
+                calendar.date(byAdding: .month, value: -11 + monthOffset, to: endDate)
+            }
         case .allTime:
-            return .year
-        }
-    }
-    
-    private func monthlyAxisDates() -> [Date] {
-        // 4 evenly spaced real dates: start, 1/3, 2/3, end of last 30 days
-        let calendar = Calendar.current
-        let now = Date()
-        guard let start = calendar.date(byAdding: .day, value: -29, to: now) else { return [] }
-        let interval = 29.0 / 3.0
-        return (0...3).map { i in
-            calendar.date(byAdding: .day, value: Int(round(Double(i) * interval)), to: start)!
+            // For all time, show years if data spans multiple years
+            let yearRange = calendar.component(.year, from: endDate) - calendar.component(.year, from: startDate)
+            if yearRange > 1 {
+                return (0...yearRange).compactMap { yearOffset in
+                    calendar.date(from: DateComponents(year: calendar.component(.year, from: startDate) + yearOffset))
+                }
+            } else {
+                // If less than 2 years, show months
+                return (0..<12).compactMap { monthOffset in
+                    calendar.date(byAdding: .month, value: monthOffset, to: startDate)
+                }
+            }
         }
     }
     
@@ -396,31 +449,73 @@ struct ProgressChartView: View {
         let calendar = Calendar.current
         let formatter = DateFormatter()
         formatter.locale = Locale.current
+        
         switch timeFrame {
         case .weekly:
-            let weekday = calendar.component(.weekday, from: date)
-            let weekdaySymbol = calendar.veryShortWeekdaySymbols[weekday - 1]
-            return weekdaySymbol
+            formatter.dateFormat = "E"
+            return formatter.string(from: date)
         case .monthly:
-            formatter.setLocalizedDateFormatFromTemplate("MMM d")
+            formatter.dateFormat = "MMM d"
             return formatter.string(from: date)
         case .sixMonths:
-            let month = calendar.component(.month, from: date)
-            return calendar.shortMonthSymbols[month - 1]
-        case .yearly:
-            let month = calendar.component(.month, from: date)
-            return String(calendar.shortMonthSymbols[month - 1].prefix(1))
-        case .allTime:
-            formatter.setLocalizedDateFormatFromTemplate("yyyy")
+            formatter.dateFormat = "MMM"
             return formatter.string(from: date)
+        case .yearly:
+            formatter.dateFormat = "MMM"
+            return formatter.string(from: date)
+        case .allTime:
+            let yearRange = calendar.component(.year, from: chartData.last?.date ?? date) - calendar.component(.year, from: chartData.first?.date ?? date)
+            if yearRange > 1 {
+                formatter.dateFormat = "yyyy"
+                return formatter.string(from: date)
+            } else {
+                formatter.dateFormat = "MMM"
+                return formatter.string(from: date)
+            }
         }
     }
     
+    private var chartColor: Color {
+        switch statType {
+        case .weight:
+            return .blue
+        case .bodyFat:
+            return .green
+        case .height:
+            return .purple
+        case .bmi:
+            return .orange
+        default:
+            return .blue
+        }
+    }
+    
+    private var shouldShowDots: Bool {
+        // Show dots for sparse data (less than 10 points)
+        if chartData.count < 10 {
+            return true
+        }
+        
+        // Show dots for weekly view (usually sparse)
+        if timeFrame == .weekly {
+            return true
+        }
+        
+        // Show dots for monthly view if data is sparse
+        if timeFrame == .monthly && chartData.count < 15 {
+            return true
+        }
+        
+        // Don't show dots for dense data in longer timeframes
+        return false
+    }
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(title)
                     .font(.headline)
+                    .fontWeight(.semibold)
                     .foregroundColor(.white)
                 Spacer()
                 Text("\(String(format: "%.1f", value))\(unit)")
@@ -428,83 +523,70 @@ struct ProgressChartView: View {
                     .foregroundColor(.gray)
             }
             
-            if data.isEmpty {
-                Text("No data available")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
+            if chartData.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 24))
+                        .foregroundColor(.gray)
+                    Text("No data available")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                }
+                .frame(maxWidth: .infinity, maxHeight: 150)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             } else {
                 Chart {
-                    ForEach(data) { entry in
+                    ForEach(chartData) { entry in
                         LineMark(
                             x: .value("Date", entry.date),
                             y: .value("Value", entry.value)
                         )
-                        .foregroundStyle(Color.blue.gradient)
-                        .interpolationMethod(.linear)
+                        .foregroundStyle(chartColor.gradient)
+                        .interpolationMethod(.catmullRom)
+                        .lineStyle(StrokeStyle(lineWidth: 3))
+                        
+                        // Only show dots for sparse data (less than 10 points) or for specific timeframes
+                        if shouldShowDots {
+                            PointMark(
+                                x: .value("Date", entry.date),
+                                y: .value("Value", entry.value)
+                            )
+                            .foregroundStyle(chartColor)
+                            .symbolSize(20)
+                        }
                     }
                 }
                 .frame(height: 150)
                 .chartYScale(domain: yAxisRange)
+                .chartPlotStyle { plotArea in
+                    plotArea
+                        .background(Color.clear)
+                }
                 .chartXAxis {
-                    if timeFrame == .monthly {
-                        AxisMarks(values: monthlyAxisDates()) { value in
-                            AxisGridLine()
-                            AxisValueLabel {
-                                if let date = value.as(Date.self) {
-                                    Text(formatDate(date)).font(.caption)
-                                }
+                    AxisMarks(values: xAxisDates) { value in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(Color.gray.opacity(0.2))
+                        AxisValueLabel {
+                            if let date = value.as(Date.self) {
+                                Text(formatDate(date))
+                                    .font(.caption2)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.gray)
                             }
                         }
-                    } else if timeFrame == .allTime {
-                        // For all time view, show first year, last year, and evenly spaced years in between
-                        let calendar = Calendar.current
-                        let allEntries = historyManager.getEntries(for: statType)
-                            .sorted { $0.date < $1.date }
-                        
-                        if let firstDate = allEntries.first?.date,
-                           let lastDate = allEntries.last?.date {
-                            let firstYear = calendar.component(.year, from: firstDate)
-                            let lastYear = calendar.component(.year, from: lastDate)
-                            let yearRange = lastYear - firstYear
-                            
-                            // If less than 3 years, show all years
-                            if yearRange <= 2 {
-                                AxisMarks(values: .stride(by: .year)) { value in
-                                    AxisGridLine()
-                                    AxisValueLabel {
-                                        if let date = value.as(Date.self) {
-                                            Text(formatDate(date)).font(.caption)
-                                        }
-                                    }
-                                }
-                            } else {
-                                // Show first year, last year, and one in the middle
-                                let middleYear = firstYear + (yearRange / 2)
-                                let dates = [
-                                    calendar.date(from: DateComponents(year: firstYear))!,
-                                    calendar.date(from: DateComponents(year: middleYear))!,
-                                    calendar.date(from: DateComponents(year: lastYear))!
-                                ]
-                                
-                                AxisMarks(values: dates) { value in
-                                    AxisGridLine()
-                                    AxisValueLabel {
-                                        if let date = value.as(Date.self) {
-                                            Text(formatDate(date)).font(.caption)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        AxisMarks(values: .stride(by: getDateStride(), count: timeFrame == .monthly ? 7 : 1)) { value in
-                            AxisGridLine()
-                            AxisValueLabel {
-                                if let date = value.as(Date.self) {
-                                    Text(formatDate(date)).font(.caption)
-                                }
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks { value in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(Color.gray.opacity(0.2))
+                        AxisValueLabel {
+                            if let doubleValue = value.as(Double.self) {
+                                Text(String(format: "%.1f", doubleValue))
+                                    .font(.caption2)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.gray)
                             }
                         }
                     }
@@ -513,7 +595,7 @@ struct ProgressChartView: View {
         }
         .padding()
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-        .cornerRadius(15)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -544,7 +626,7 @@ struct RecentMeasurementRow: View {
         }
         .padding()
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-        .cornerRadius(15)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -569,7 +651,21 @@ struct QuickActionButton: View {
             .frame(height: 40)
             .padding()
             .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-            .cornerRadius(15)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+    }
+}
+
+// Example of how to make an authenticated API call
+extension DashboardView {
+    func fetchUserData() async {
+        do {
+            // Example of using NetworkManager for authenticated requests
+            let _: User = try await NetworkManager.shared.makeAuthenticatedRequest("/user/profile")
+            // Handle the response
+        } catch {
+            // Handle error
+            print("Error fetching user data: \(error)")
         }
     }
 }

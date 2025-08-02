@@ -3,10 +3,14 @@ import HealthKit
 
 struct AccountView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var authViewModel: AuthViewModel
     @StateObject private var healthManager = HealthManager()
     @ObservedObject var historyManager: StatsHistoryManager
     @State private var showHealthAccessSheet = false
     @State private var showExportSheet = false
+    @State private var isSigningOut = false
+    @State private var showSignOutConfirmation = false
+    @State private var showCopiedMessage = false
     
     // Computed property to check if Apple Health is actively connected
     private var isAppleHealthConnected: Bool {
@@ -82,25 +86,83 @@ struct AccountView: View {
                     HStack {
                         Label("Version", systemImage: "info.circle.fill")
                         Spacer()
-                        Text("1.0.0")
+                        Text(Bundle.main.appVersion)
                             .foregroundColor(.gray)
+                        Image(systemName: "doc.on.doc")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIPasteboard.general.string = Bundle.main.appVersion
+                        showCopiedMessage = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            showCopiedMessage = false
+                        }
+                    }
+                    
+                    HStack {
+                        Label("Build Number", systemImage: "number.circle.fill")
+                        Spacer()
+                        Text(Bundle.main.buildNumber)
+                            .foregroundColor(.gray)
+                        Image(systemName: "doc.on.doc")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIPasteboard.general.string = Bundle.main.buildNumber
+                        showCopiedMessage = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            showCopiedMessage = false
+                        }
+                    }
+                    
+                    HStack {
+                        Label("Full Version", systemImage: "tag.fill")
+                        Spacer()
+                        Text(Bundle.main.versionString)
+                            .foregroundColor(.gray)
+                            .font(.caption)
+                        Image(systemName: "doc.on.doc")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UIPasteboard.general.string = Bundle.main.versionString
+                        showCopiedMessage = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            showCopiedMessage = false
+                        }
                     }
                 }
                 
-                Section {
+                Section(header: Text("Account")) {
                     Button(action: {
-                        // Sign out action
+                        showSignOutConfirmation = true
                     }) {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                            .foregroundColor(.red)
+                        HStack {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .foregroundColor(.red)
+                            Text("Sign Out")
+                                .foregroundColor(.red)
+                            if isSigningOut {
+                                Spacer()
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle())
+                            }
+                        }
                     }
+                    .disabled(isSigningOut)
                 }
             }
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Done") {
+                    Button("Close") {
                         dismiss()
                     }
                 }
@@ -111,6 +173,40 @@ struct AccountView: View {
             .sheet(isPresented: $showExportSheet) {
                 ExportDataView(historyManager: historyManager)
             }
+            .alert("Sign Out", isPresented: $showSignOutConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Sign Out", role: .destructive) {
+                    Task {
+                        isSigningOut = true
+                        await authViewModel.logout()
+                        isSigningOut = false
+                    }
+                }
+            } message: {
+                Text("Are you sure you want to sign out?")
+            }
+            .overlay(
+                Group {
+                    if showCopiedMessage {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                Text("Copied to clipboard!")
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Color.black.opacity(0.8))
+                                    .cornerRadius(8)
+                                    .padding(.bottom, 100)
+                                Spacer()
+                            }
+                        }
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.2), value: showCopiedMessage)
+                    }
+                }
+            )
         }
     }
 }
@@ -299,6 +395,14 @@ struct HealthAccessView: View {
                             
                             Text("Last sync: \(healthManager.lastUpdateTimestamp.formatted())")
                                 .font(.caption)
+                            
+                            Button("Sync All to Backend") {
+                                Task {
+                                    historyManager.syncAllEntriesToBackend()
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .padding(.vertical, 4)
                             
                             Text("Weight entries: \(historyManager.getEntries(for: .weight, source: .appleHealth).count)")
                             ForEach(historyManager.getEntries(for: .weight, source: .appleHealth).prefix(5), id: \.id) { entry in

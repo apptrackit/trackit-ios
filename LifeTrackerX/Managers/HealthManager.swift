@@ -473,7 +473,7 @@ class HealthManager: ObservableObject {
             // Store the HealthKit sample UUID
             healthKitSampleMap[entry.id] = sample.uuid.uuidString
             
-            // Add or update the entry
+            // Add or update the entry (this will automatically sync to backend)
             historyManager.addEntry(entry)
             addedCount += 1
         }
