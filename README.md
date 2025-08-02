@@ -78,8 +78,8 @@
 ### **Installation**
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/LifeTrackerX.git
-   cd LifeTrackerX
+   git clone https://github.com/apptrackit/trackit-ios.git
+   cd trackit-ios
    ```
 
 2. **Open in Xcode**
@@ -203,12 +203,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/LifeTrackerX/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/LifeTrackerX/discussions)
-- **Documentation**: [Wiki](https://github.com/yourusername/LifeTrackerX/wiki)
-
----
-
-<div align="center">
-  <strong>Made with ❤️ for fitness enthusiasts</strong>
-</div>
+- **Issues**: [GitHub Issues](https://github.com/apptrackit/trackit-ios/issues)
