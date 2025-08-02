@@ -8,7 +8,14 @@
 		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
-			<key>dev.ballabotond.com</key>
+			<key>devtrackit.ballabotond.com</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+			<key>prodtrackit.ballabotond.com</key>
 			<dict>
 				<key>NSExceptionAllowsInsecureHTTPLoads</key>
 				<true/>
