@@ -5,21 +5,61 @@ struct TrackDataView: View {
     @State private var selectedType: StatType = .weight
     @State private var value: String = ""
     @State private var date = Date()
+    @State private var isKeyboardFocused = false
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var isValueFieldFocused: Bool
     
     var body: some View {
         NavigationView {
             ZStack {
                 Color.black.edgesIgnoringSafeArea(.all)
                 
-                VStack {
-                    Text("Track New Data")
-                        .font(.title.bold())
+                VStack(spacing: 0) {
+                    // Header
+                    HStack {
+                        Button("Cancel") {
+                            dismiss()
+                        }
                         .foregroundColor(.white)
-                        .padding()
+                        
+                        Spacer()
+                        
+                        Text(selectedType.title)
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                        
+                        Spacer()
+                        
+                        Button("Save") {
+                            saveEntry()
+                        }
+                        .foregroundColor(.blue)
+                        .fontWeight(.semibold)
+                    }
+                    .padding()
                     
+                    // Metric Type Icon
+                    VStack(spacing: 16) {
+                        Circle()
+                            .fill(Color(red: 0.11, green: 0.11, blue: 0.12))
+                            .frame(width: 80, height: 80)
+                            .overlay(
+                                Image(systemName: selectedType.iconName)
+                                    .font(.system(size: 32))
+                                    .foregroundColor(.purple)
+                            )
+                        
+                        Text(selectedType.title)
+                            .font(.title)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.vertical, 20)
+                    
+                    // Metric Type Selection
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
+                        HStack(spacing: 12) {
                             ForEach(StatType.allCases.filter { !$0.isCalculated }) { type in
                                 MeasurementTypeButton(
                                     type: type,
@@ -30,55 +70,83 @@ struct TrackDataView: View {
                         }
                         .padding(.horizontal)
                     }
+                    .padding(.bottom, 30)
                     
-                    VStack(alignment: .leading) {
-                        Text("\(selectedType.title) (\(selectedType.unit))")
-                            .foregroundColor(.white)
-                        TextField("Value in \(selectedType.unit)", text: $value)
-                            .keyboardType(.decimalPad)
-                            .padding()
-                            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-                            .cornerRadius(10)
-                            .foregroundColor(.white)
-                    }
-                    .padding()
-                    
-                    VStack(alignment: .leading) {
-                        Text("Date")
-                            .foregroundColor(.white)
-                        DatePicker("", selection: $date, displayedComponents: .date)
-                            .datePickerStyle(WheelDatePickerStyle())
-                            .labelsHidden()
-                            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-                            .cornerRadius(10)
-                            .colorScheme(.dark)
-                    }
-                    .padding()
-                    
-                    HStack {
-                        Button("Cancel") {
-                            dismiss()
+                    // Form Fields
+                    VStack(spacing: 0) {
+                        // Date Field
+                        HStack {
+                            Text("Date")
+                                .foregroundColor(.white)
+                            Spacer()
+                            Text(date.formatted(date: .abbreviated, time: .omitted))
+                                .foregroundColor(.blue)
                         }
-                        .foregroundColor(.white)
                         .padding()
                         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-                        .cornerRadius(10)
-                        
-                        Spacer()
-                        
-                        Button("Save") {
-                            saveEntry()
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .onTapGesture {
+                            // This will show the date picker
                         }
-                        .foregroundColor(.white)
+                        .overlay(
+                            DatePicker("", selection: $date, in: ...Date(), displayedComponents: .date)
+                                .datePickerStyle(.compact)
+                                .labelsHidden()
+                                .colorScheme(.dark)
+                                .opacity(0.1)
+                        )
+                        
+                        Spacer().frame(height: 16)
+                        
+                        // Time Field
+                        HStack {
+                            Text("Time")
+                                .foregroundColor(.white)
+                            Spacer()
+                            Text(date.formatted(date: .omitted, time: .shortened))
+                                .foregroundColor(.blue)
+                        }
                         .padding()
-                        .background(Color.blue)
-                        .cornerRadius(10)
+                        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .onTapGesture {
+                            // This will show the time picker
+                        }
+                        .overlay(
+                            DatePicker("", selection: $date, displayedComponents: .hourAndMinute)
+                                .datePickerStyle(.wheel)
+                                .labelsHidden()
+                                .colorScheme(.dark)
+                                .opacity(0.1)
+                        )
+                        
+                        Spacer().frame(height: 16)
+                        
+                        // Value Field
+                        HStack {
+                            Text(selectedType.unit)
+                                .foregroundColor(.white)
+                            Spacer()
+                            TextField("", text: $value)
+                                .keyboardType(.decimalPad)
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.trailing)
+                                .focused($isValueFieldFocused)
+                        }
+                        .padding()
+                        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     }
-                    .padding()
+                    .padding(.horizontal)
                     
                     Spacer()
                 }
-                .padding()
+            }
+        }
+        .onAppear {
+            // Auto-focus the value field when the view appears
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                isValueFieldFocused = true
             }
         }
     }
@@ -120,7 +188,7 @@ struct MeasurementTypeButton: View {
             }
             .frame(width: 80, height: 80)
             .background(isSelected ? Color.blue : Color(red: 0.11, green: 0.11, blue: 0.12))
-            .cornerRadius(10)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
     }
 }

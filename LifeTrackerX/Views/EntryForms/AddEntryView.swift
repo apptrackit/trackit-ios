@@ -7,66 +7,131 @@ struct AddEntryView: View {
     @State private var date = Date()
     @Environment(\.dismiss) private var dismiss
     @State private var showAlert = false
+    @FocusState private var isValueFieldFocused: Bool
     
     var body: some View {
         NavigationView {
             ZStack {
                 Color.black.edgesIgnoringSafeArea(.all)
                 
-                VStack {
-                    Text("Add \(statType.title) Entry")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .padding()
-                    
-                    VStack(alignment: .leading) {
-                        Text("\(statType.title) (\(statType.unit))")
-                            .foregroundColor(.white)
-                        TextField("Value in \(statType.unit)", text: $value)
-                            .keyboardType(.decimalPad)
-                            .padding()
-                            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-                            .cornerRadius(10)
-                            .foregroundColor(.white)
-                    }
-                    .padding()
-                    
-                    VStack(alignment: .leading) {
-                        Text("Date")
-                            .foregroundColor(.white)
-                        DatePicker("", selection: $date, in: ...Date(), displayedComponents: .date)
-                            .datePickerStyle(WheelDatePickerStyle())
-                            .labelsHidden()
-                            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-                            .cornerRadius(10)
-                            .colorScheme(.dark)
-                    }
-                    .padding()
-                    
+                VStack(spacing: 0) {
+                    // Header
                     HStack {
                         Button("Cancel") {
                             dismiss()
                         }
                         .foregroundColor(.white)
-                        .padding()
-                        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-                        .cornerRadius(10)
+                        
+                        Spacer()
+                        
+                        Text(statType.title)
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
                         
                         Spacer()
                         
                         Button("Save") {
                             saveEntry()
                         }
-                        .foregroundColor(.white)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(10)
+                        .foregroundColor(.blue)
+                        .fontWeight(.semibold)
                     }
                     .padding()
                     
+                    // Metric Type Icon
+                    VStack(spacing: 16) {
+                        Circle()
+                            .fill(Color(red: 0.11, green: 0.11, blue: 0.12))
+                            .frame(width: 80, height: 80)
+                            .overlay(
+                                Image(systemName: statType.iconName)
+                                    .font(.system(size: 32))
+                                    .foregroundColor(.purple)
+                            )
+                        
+                        Text(statType.title)
+                            .font(.title)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.vertical, 40)
+                    
+                    // Form Fields
+                    VStack(spacing: 0) {
+                        // Date Field
+                        HStack {
+                            Text("Date")
+                                .foregroundColor(.white)
+                            Spacer()
+                            Text(date.formatted(date: .abbreviated, time: .omitted))
+                                .foregroundColor(.blue)
+                        }
+                        .padding()
+                        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .onTapGesture {
+                            // This will show the date picker
+                        }
+                        .overlay(
+                            DatePicker("", selection: $date, in: ...Date(), displayedComponents: .date)
+                                .datePickerStyle(.compact)
+                                .labelsHidden()
+                                .colorScheme(.dark)
+                                .opacity(0.1)
+                        )
+                        
+                        Spacer().frame(height: 16)
+                        
+                        // Time Field
+                        HStack {
+                            Text("Time")
+                                .foregroundColor(.white)
+                            Spacer()
+                            Text(date.formatted(date: .omitted, time: .shortened))
+                                .foregroundColor(.blue)
+                        }
+                        .padding()
+                        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .onTapGesture {
+                            // This will show the time picker
+                        }
+                        .overlay(
+                            DatePicker("", selection: $date, displayedComponents: .hourAndMinute)
+                                .datePickerStyle(.wheel)
+                                .labelsHidden()
+                                .colorScheme(.dark)
+                                .opacity(0.1)
+                        )
+                        
+                        Spacer().frame(height: 16)
+                        
+                        // Value Field
+                        HStack {
+                            Text(statType.unit)
+                                .foregroundColor(.white)
+                            Spacer()
+                            TextField("", text: $value)
+                                .keyboardType(.decimalPad)
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.trailing)
+                                .focused($isValueFieldFocused)
+                        }
+                        .padding()
+                        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    }
+                    .padding(.horizontal)
+                    
                     Spacer()
                 }
-                .padding()
+            }
+        }
+        .onAppear {
+            // Auto-focus the value field when the view appears
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                isValueFieldFocused = true
             }
         }
         .alert(isPresented: $showAlert) {
