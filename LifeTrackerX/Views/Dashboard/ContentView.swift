@@ -334,7 +334,7 @@ struct SummaryCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-        .cornerRadius(15)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -534,7 +534,7 @@ struct ProgressChartView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: 150)
                 .background(Color(.systemGray6))
-                .cornerRadius(8)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             } else {
                 Chart {
                     ForEach(chartData) { entry in
@@ -595,7 +595,7 @@ struct ProgressChartView: View {
         }
         .padding()
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-        .cornerRadius(15)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -626,7 +626,7 @@ struct RecentMeasurementRow: View {
         }
         .padding()
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-        .cornerRadius(15)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -651,7 +651,7 @@ struct QuickActionButton: View {
             .frame(height: 40)
             .padding()
             .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-            .cornerRadius(15)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
     }
 }

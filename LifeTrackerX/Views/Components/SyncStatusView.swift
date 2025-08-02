@@ -26,7 +26,7 @@ struct SyncStatusView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(Color(.systemGray6))
-        .cornerRadius(12)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
     
     private var networkStatusColor: Color {

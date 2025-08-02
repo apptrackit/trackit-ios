@@ -60,7 +60,7 @@ struct StatCard: View {
         }
         .frame(width: 159, height: 100, alignment: .leading)
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-        .cornerRadius(25)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .padding(5)
         .onTapGesture {
             if statType != nil {
