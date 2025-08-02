@@ -29,7 +29,7 @@ enum AuthError: Error {
 
 class AuthService {
     static let shared = AuthService()
-    private let baseURL = "https://devtrackit.ballabotond.com"
+    private let baseURL = "https://prodtrackit.ballabotond.com"
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "AuthService")
     private let session: URLSession
     
