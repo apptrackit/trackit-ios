@@ -346,38 +346,42 @@ struct ProgressChartView: View {
     let statType: StatType
     let timeFrame: TimeFrame
     
+    private var allEntries: [StatEntry] {
+        historyManager.getEntries(for: statType).sorted { $0.date < $1.date }
+    }
+    
     private var chartData: [StatEntry] {
-        let calendar = Calendar.current
-        let now = Date()
-        
-        // Get all entries and sort by date
-        let allEntries = historyManager.getEntries(for: statType)
-            .sorted { $0.date < $1.date }
-        
-        // If no entries, return empty array
         guard !allEntries.isEmpty else { return [] }
         
-        // Calculate the date range based on timeFrame
-        let startDate: Date
+        let calendar = Calendar.current
+        let mostRecentEntry = allEntries.last!
+        let mostRecentDate = mostRecentEntry.date
+        
+        let filteredEntries: [StatEntry]
+        
         switch timeFrame {
         case .weekly:
-            startDate = calendar.date(byAdding: .day, value: -7, to: now) ?? now
+            // Show 7 days ending with the most recent data's day
+            let startDate = calendar.date(byAdding: .day, value: -6, to: mostRecentDate) ?? mostRecentDate
+            filteredEntries = allEntries.filter { $0.date >= startDate && $0.date <= mostRecentDate }
+            
         case .monthly:
-            startDate = calendar.date(byAdding: .day, value: -30, to: now) ?? now
+            // Show 30 days ending with the most recent data's day
+            let startDate = calendar.date(byAdding: .day, value: -29, to: mostRecentDate) ?? mostRecentDate
+            filteredEntries = allEntries.filter { $0.date >= startDate && $0.date <= mostRecentDate }
+            
         case .sixMonths:
-            startDate = calendar.date(byAdding: .month, value: -6, to: now) ?? now
+            // Show 6 months ending with the most recent data's month
+            let startDate = calendar.date(byAdding: .month, value: -5, to: mostRecentDate) ?? mostRecentDate
+            filteredEntries = allEntries.filter { $0.date >= startDate && $0.date <= mostRecentDate }
+            
         case .yearly:
-            startDate = calendar.date(byAdding: .year, value: -1, to: now) ?? now
+            // Show 12 months ending with the most recent data's month
+            let startDate = calendar.date(byAdding: .month, value: -11, to: mostRecentDate) ?? mostRecentDate
+            filteredEntries = allEntries.filter { $0.date >= startDate && $0.date <= mostRecentDate }
+            
         case .allTime:
-            return allEntries // Return all data for all time
-        }
-        
-        // Filter entries for the selected timeFrame
-        let filteredEntries = allEntries.filter { $0.date >= startDate }
-        
-        // If no entries in the selected timeFrame, return the last 5 entries
-        if filteredEntries.isEmpty {
-            return Array(allEntries.suffix(min(5, allEntries.count)))
+            filteredEntries = allEntries
         }
         
         return filteredEntries
@@ -390,13 +394,12 @@ struct ProgressChartView: View {
         let min = values.min() ?? 0
         let max = values.max() ?? 100
         
-        // If all values are the same, create a range around that value
         if min == max {
-            let padding = max * 0.1 // 10% padding
+            let padding = max * 0.1
             return (max - padding)...(max + padding)
         }
         
-        let padding = (max - min) * 0.15 // 15% padding for better visualization
+        let padding = (max - min) * 0.15
         return (min - padding)...(max + padding)
     }
     
@@ -404,42 +407,53 @@ struct ProgressChartView: View {
         guard !chartData.isEmpty else { return [] }
         
         let calendar = Calendar.current
-        let startDate = chartData.first!.date
-        let endDate = chartData.last!.date
+        let mostRecentDate = chartData.last!.date
+        let oldestDate = chartData.first!.date
         
         switch timeFrame {
         case .weekly:
-            // Show every day of the week
+            // Show 7 days: Mon, Tue, Wed, Thu, Fri, Sat, Sun
+            // Based on the most recent data's day
             return (0..<7).compactMap { dayOffset in
-                calendar.date(byAdding: .day, value: -6 + dayOffset, to: endDate)
+                calendar.date(byAdding: .day, value: -6 + dayOffset, to: mostRecentDate)
             }
+            
         case .monthly:
-            // Show 4 evenly spaced dates
+            // Show 4 evenly spaced dates across the month
             return (0..<4).compactMap { index in
-                let daysOffset = Int(Double(index) * 30.0 / 3.0)
-                return calendar.date(byAdding: .day, value: -30 + daysOffset, to: endDate)
+                let daysOffset = -29 + (index * 10) // Roughly every 10 days
+                return calendar.date(byAdding: .day, value: daysOffset, to: mostRecentDate)
             }
+            
         case .sixMonths:
             // Show 6 months
             return (0..<6).compactMap { monthOffset in
-                calendar.date(byAdding: .month, value: -5 + monthOffset, to: endDate)
+                calendar.date(byAdding: .month, value: -5 + monthOffset, to: mostRecentDate)
             }
+            
         case .yearly:
-            // Show 12 months
+            // Show all 12 months
             return (0..<12).compactMap { monthOffset in
-                calendar.date(byAdding: .month, value: -11 + monthOffset, to: endDate)
+                calendar.date(byAdding: .month, value: -11 + monthOffset, to: mostRecentDate)
             }
+            
         case .allTime:
-            // For all time, show years if data spans multiple years
-            let yearRange = calendar.component(.year, from: endDate) - calendar.component(.year, from: startDate)
-            if yearRange > 1 {
+            let yearRange = calendar.component(.year, from: mostRecentDate) - calendar.component(.year, from: oldestDate)
+            
+            if yearRange <= 10 {
+                // Show all years if 10 or fewer
                 return (0...yearRange).compactMap { yearOffset in
-                    calendar.date(from: DateComponents(year: calendar.component(.year, from: startDate) + yearOffset))
+                    calendar.date(from: DateComponents(year: calendar.component(.year, from: oldestDate) + yearOffset))
                 }
             } else {
-                // If less than 2 years, show months
-                return (0..<12).compactMap { monthOffset in
-                    calendar.date(byAdding: .month, value: monthOffset, to: startDate)
+                // Show first, 2 middle, and last year if more than 10 years
+                let firstYear = calendar.component(.year, from: oldestDate)
+                let lastYear = calendar.component(.year, from: mostRecentDate)
+                let middleYear1 = firstYear + (lastYear - firstYear) / 3
+                let middleYear2 = firstYear + 2 * (lastYear - firstYear) / 3
+                
+                return [firstYear, middleYear1, middleYear2, lastYear].compactMap { year in
+                    calendar.date(from: DateComponents(year: year))
                 }
             }
         }
@@ -452,26 +466,30 @@ struct ProgressChartView: View {
         
         switch timeFrame {
         case .weekly:
+            // Show day names: Mon, Tue, Wed, etc.
             formatter.dateFormat = "E"
             return formatter.string(from: date)
+            
         case .monthly:
+            // Show month day: Jan 7, Jan 14, etc.
             formatter.dateFormat = "MMM d"
             return formatter.string(from: date)
+            
         case .sixMonths:
+            // Show month names: Jan, Feb, Mar, etc.
             formatter.dateFormat = "MMM"
             return formatter.string(from: date)
+            
         case .yearly:
+            // Show first letter of months: J, F, M, A, M, J, J, A, S, O, N, D
             formatter.dateFormat = "MMM"
-            return formatter.string(from: date)
+            let monthName = formatter.string(from: date)
+            return String(monthName.prefix(1))
+            
         case .allTime:
-            let yearRange = calendar.component(.year, from: chartData.last?.date ?? date) - calendar.component(.year, from: chartData.first?.date ?? date)
-            if yearRange > 1 {
-                formatter.dateFormat = "yyyy"
-                return formatter.string(from: date)
-            } else {
-                formatter.dateFormat = "MMM"
-                return formatter.string(from: date)
-            }
+            // Show years: 2020, 2021, 2022, etc.
+            formatter.dateFormat = "yyyy"
+            return formatter.string(from: date)
         }
     }
     
@@ -491,23 +509,8 @@ struct ProgressChartView: View {
     }
     
     private var shouldShowDots: Bool {
-        // Show dots for sparse data (less than 10 points)
-        if chartData.count < 10 {
-            return true
-        }
-        
-        // Show dots for weekly view (usually sparse)
-        if timeFrame == .weekly {
-            return true
-        }
-        
-        // Show dots for monthly view if data is sparse
-        if timeFrame == .monthly && chartData.count < 15 {
-            return true
-        }
-        
-        // Don't show dots for dense data in longer timeframes
-        return false
+        // Show dots for sparse data or specific timeframes
+        return chartData.count < 10 || timeFrame == .weekly || (timeFrame == .monthly && chartData.count < 15)
     }
     
     var body: some View {
@@ -546,7 +549,6 @@ struct ProgressChartView: View {
                         .interpolationMethod(.catmullRom)
                         .lineStyle(StrokeStyle(lineWidth: 3))
                         
-                        // Only show dots for sparse data (less than 10 points) or for specific timeframes
                         if shouldShowDots {
                             PointMark(
                                 x: .value("Date", entry.date),
@@ -557,11 +559,10 @@ struct ProgressChartView: View {
                         }
                     }
                 }
-                .frame(height: 150)
+                .frame(height: 160)
                 .chartYScale(domain: yAxisRange)
                 .chartPlotStyle { plotArea in
-                    plotArea
-                        .background(Color.clear)
+                    plotArea.background(Color.clear)
                 }
                 .chartXAxis {
                     AxisMarks(values: xAxisDates) { value in
@@ -570,9 +571,10 @@ struct ProgressChartView: View {
                         AxisValueLabel {
                             if let date = value.as(Date.self) {
                                 Text(formatDate(date))
-                                    .font(.caption2)
-                                    .fontWeight(.medium)
+                                    .font(.system(size: 10, weight: .medium))
                                     .foregroundColor(.gray)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(1)
                             }
                         }
                     }
@@ -593,7 +595,8 @@ struct ProgressChartView: View {
                 }
             }
         }
-        .padding()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
