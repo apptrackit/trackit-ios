@@ -91,7 +91,6 @@ struct BMIRow: View {
         }
         .padding(.vertical, 12)
         .padding(.horizontal)
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
     }
     
     func formatDate(_ date: Date) -> String {

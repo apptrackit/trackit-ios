@@ -48,7 +48,7 @@ struct HistoryView: View {
                         .padding(.horizontal)
                     
                     HStack {
-                        Text("History")
+                        Text("All Recorded Data")
                             .font(.headline)
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -117,35 +117,55 @@ struct HistoryView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
                     } else {
-                        LazyVStack {
-                            ForEach(entries) { entry in
-                                HStack {
-                                    if isEditMode && !statType.isCalculated && entry.source != .automated {
-                                        Button(action: {
-                                            withAnimation(.easeInOut) {
-                                                historyManager.removeEntry(entry)
+                        VStack(alignment: .leading, spacing: 8) {
+                            // Metric type label on top left
+                            Text(statType.unit)
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .padding(.horizontal)
+                            
+                            VStack(spacing: 0) {
+                                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                                    VStack(spacing: 0) {
+                                        HStack {
+                                            if isEditMode && !statType.isCalculated && entry.source != .automated {
+                                                Button(action: {
+                                                    withAnimation(.easeInOut) {
+                                                        historyManager.removeEntry(entry)
+                                                    }
+                                                }) {
+                                                    Image(systemName: "minus.circle.fill")
+                                                        .foregroundColor(.red)
+                                                        .padding(.leading)
+                                                }
+                                                .transition(.move(edge: .leading))
                                             }
-                                        }) {
-                                            Image(systemName: "minus.circle.fill")
-                                                .foregroundColor(.red)
-                                                .padding(.leading)
+                                            
+                                            if statType.isCalculated {
+                                                BMIRow(entry: entry, historyManager: historyManager)
+                                            } else {
+                                                EntryRow(entry: entry, statType: statType) {
+                                                    if !isEditMode {
+                                                        selectedEntry = entry
+                                                    }
+                                                }
+                                            }
                                         }
-                                        .transition(.move(edge: .leading))
-                                    }
-                                    
-                                    if statType.isCalculated {
-                                        BMIRow(entry: entry, historyManager: historyManager)
-                                    } else {
-                                        EntryRow(entry: entry, statType: statType) {
-                                            if !isEditMode {
-                                                selectedEntry = entry
-                                            }
+                                        .animation(.easeInOut, value: isEditMode)
+                                        
+                                        // Add separator line if not the last item
+                                        if index < entries.count - 1 {
+                                            Divider()
+                                                .background(Color.gray.opacity(0.3))
+                                                .padding(.horizontal)
                                         }
                                     }
                                 }
-                                .animation(.easeInOut, value: isEditMode)
                             }
+                            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
                         }
+                        .padding(.horizontal)
                     }
                 }
             }
