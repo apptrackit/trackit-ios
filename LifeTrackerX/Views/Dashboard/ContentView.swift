@@ -420,12 +420,9 @@ struct ProgressChartView: View {
             
         case .monthly:
             // Show 4 evenly spaced dates across the month
-            let dayRange = calendar.dateInterval(from: oldestDate, to: mostRecentDate)?.duration ?? 0
-            let daySpacing = dayRange / (3 * 24 * 60 * 60) // 3 intervals = 4 points
-            
             return (0..<4).compactMap { index in
-                let daysToAdd = daySpacing * Double(index) / (24 * 60 * 60)
-                return calendar.date(byAdding: .day, value: Int(daysToAdd), to: oldestDate)
+                let daysOffset = -29 + (index * 10) // Roughly every 10 days
+                return calendar.date(byAdding: .day, value: daysOffset, to: mostRecentDate)
             }
             
         case .sixMonths:
@@ -562,7 +559,7 @@ struct ProgressChartView: View {
                         }
                     }
                 }
-                .frame(height: 150)
+                .frame(height: 160)
                 .chartYScale(domain: yAxisRange)
                 .chartPlotStyle { plotArea in
                     plotArea.background(Color.clear)
@@ -574,9 +571,10 @@ struct ProgressChartView: View {
                         AxisValueLabel {
                             if let date = value.as(Date.self) {
                                 Text(formatDate(date))
-                                    .font(.caption2)
-                                    .fontWeight(.medium)
+                                    .font(.system(size: 10, weight: .medium))
                                     .foregroundColor(.gray)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(1)
                             }
                         }
                     }
@@ -597,7 +595,8 @@ struct ProgressChartView: View {
                 }
             }
         }
-        .padding()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .background(Color(red: 0.11, green: 0.11, blue: 0.12))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
