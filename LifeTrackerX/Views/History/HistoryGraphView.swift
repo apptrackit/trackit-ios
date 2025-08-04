@@ -37,6 +37,10 @@ struct HistoryGraphView: View {
         }
     }
     
+    var currentValue: Double {
+        filteredData.last?.value ?? 0.0
+    }
+    
     var body: some View {
         VStack {
             Picker("Time Frame", selection: $selectedTimeFrame) {
@@ -47,62 +51,14 @@ struct HistoryGraphView: View {
             .pickerStyle(SegmentedPickerStyle())
             .padding()
             
-            if filteredData.isEmpty {
-                Text("No data available for this time period")
-                    .foregroundColor(.gray)
-                    .padding()
-            } else {
-                Chart {
-                    ForEach(filteredData) { entry in
-                        LineMark(
-                            x: .value("Date", entry.date),
-                            y: .value(statType.title, entry.value)
-                        )
-                        .foregroundStyle(Color.blue)
-                        
-                        PointMark(
-                            x: .value("Date", entry.date),
-                            y: .value(statType.title, entry.value)
-                        )
-                        .foregroundStyle(Color.blue)
-                    }
-                }
-                .chartXAxis {
-                    AxisMarks(values: .automatic) { value in
-                        AxisGridLine()
-                        AxisValueLabel(format: getDateFormat())
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .leading)
-                }
-                .chartYScale(domain: getYAxisDomain())
-            }
+            ProgressChartView(
+                title: statType.title,
+                value: currentValue,
+                unit: statType.unit,
+                historyManager: historyManager,
+                statType: statType,
+                timeFrame: selectedTimeFrame
+            )
         }
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-        .cornerRadius(10)
-    }
-    
-    private func getDateFormat() -> Date.FormatStyle {
-        switch selectedTimeFrame {
-        case .weekly:
-            return .dateTime.weekday(.abbreviated)
-        case .monthly:
-            return .dateTime.day()
-        case .sixMonths, .yearly:
-            return .dateTime.month(.abbreviated)
-        case .allTime:
-            return .dateTime.year()
-        }
-    }
-    
-    private func getYAxisDomain() -> ClosedRange<Double> {
-        guard let minValue = filteredData.map({ $0.value }).min(),
-              let maxValue = filteredData.map({ $0.value }).max() else {
-            return 0...100
-        }
-        
-        let padding = max((maxValue - minValue) * 0.1, 1.0)
-        return (minValue - padding)...(maxValue + padding)
     }
 }
