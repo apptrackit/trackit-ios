@@ -295,6 +295,31 @@ struct HealthAccessView: View {
         return !weightEntries.isEmpty || !heightEntries.isEmpty || !bodyFatEntries.isEmpty
     }
     
+    // HealthKit authorization status
+    private var healthKitStatusColor: Color {
+        if healthManager.isAuthorized {
+            if healthManager.isWriteAuthorized {
+                return .green
+            } else {
+                return .orange
+            }
+        } else {
+            return .red
+        }
+    }
+    
+    private var healthKitStatusText: String {
+        if healthManager.isAuthorized {
+            if healthManager.isWriteAuthorized {
+                return "Connected (Read & Write)"
+            } else {
+                return "Connected (Read Only)"
+            }
+        } else {
+            return "Not Connected"
+        }
+    }
+    
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -313,6 +338,18 @@ struct HealthAccessView: View {
                         .font(.title2)
                         .fontWeight(.bold)
                     
+                    // Authorization status indicator
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(healthKitStatusColor)
+                            .frame(width: 8, height: 8)
+                        
+                        Text(healthKitStatusText)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal)
+                    
                     Text("This app needs access to your health data to provide accurate tracking and insights. Your data will be automatically synced with Apple Health.")
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
@@ -326,6 +363,18 @@ struct HealthAccessView: View {
                     .background(Color(.systemGray6))
                     .cornerRadius(12)
                     .padding(.horizontal)
+                    
+                    // Show note about read-only mode
+                    if healthManager.isAuthorized && !healthManager.isWriteAuthorized {
+                        HStack(spacing: 8) {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.orange)
+                            Text("Read-only mode: Your manual entries won't be synced to Apple Health")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal)
+                    }
                     
                     if healthManager.isAuthorized {
                         if hasAppleHealthData {
@@ -356,7 +405,7 @@ struct HealthAccessView: View {
                             Button(action: {
                                 importHealthData()
                             }) {
-                                Text("Connect Apple Health")
+                                Text(healthManager.isWriteAuthorized ? "Import Health Data" : "Import Health Data (Read Only)")
                                     .fontWeight(.bold)
                                     .foregroundColor(.white)
                                     .frame(maxWidth: .infinity)
@@ -461,9 +510,13 @@ struct HealthAccessView: View {
             if healthManager.isAuthorized {
                 print("🔑 Authorization successful")
                 
-                // First sync existing manual entries to Apple Health
-                print("📤 Syncing existing manual entries to Apple Health")
-                self.historyManager.syncManualEntriesToHealthKit()
+                // First sync existing manual entries to Apple Health (only if write access is available)
+                if healthManager.isWriteAuthorized {
+                    print("📤 Syncing existing manual entries to Apple Health")
+                    self.historyManager.syncManualEntriesToHealthKit()
+                } else {
+                    print("⚠️ Write access not available - manual entries will not be synced to HealthKit")
+                }
                 
                 // Then import Apple Health data
                 print("📥 Importing data from Apple Health")
@@ -483,12 +536,16 @@ struct HealthAccessView: View {
             showDebugInfo = true
             if success {
                 print("✅ Health data import successful")
-                // After successful import, sync any remaining manual entries
-                if healthManager.isAuthorized {
+                
+                // Sync Apple Health entries to backend
+                self.historyManager.syncAppleHealthEntriesToBackend()
+                
+                // After successful import, sync any remaining manual entries (only if write access is available)
+                if healthManager.isWriteAuthorized {
                     print("📤 Syncing manual entries after import")
                     self.historyManager.syncManualEntriesToHealthKit()
                 } else {
-                    print("❌ Cannot sync manual entries - not authorized")
+                    print("⚠️ Write access not available - manual entries will not be synced to HealthKit")
                 }
             } else {
                 print("❌ Health data import failed")
@@ -506,9 +563,17 @@ struct HealthAccessView: View {
                 showDebugInfo = true
                 if success {
                     print("✅ Data refresh successful")
-                    // After successful refresh, sync manual entries
-                    print("📤 Syncing manual entries after refresh")
-                    self.historyManager.syncManualEntriesToHealthKit()
+                    
+                    // Sync Apple Health entries to backend
+                    self.historyManager.syncAppleHealthEntriesToBackend()
+                    
+                    // After successful refresh, sync manual entries (only if write access is available)
+                    if healthManager.isWriteAuthorized {
+                        print("📤 Syncing manual entries after refresh")
+                        self.historyManager.syncManualEntriesToHealthKit()
+                    } else {
+                        print("⚠️ Write access not available - manual entries will not be synced to HealthKit")
+                    }
                 } else {
                     print("❌ Data refresh failed")
                 }

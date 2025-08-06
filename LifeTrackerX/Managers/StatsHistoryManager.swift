@@ -10,6 +10,9 @@ class StatsHistoryManager: ObservableObject {
     @Published var refreshTrigger: UUID = UUID()
     private let saveKey = "StatsHistory"
     
+    // Flag to track if Apple Health entries have been synced to backend
+    private var appleHealthEntriesSynced = false
+    
     // Reference to HealthManager and MetricSyncManager
     private let healthManager = HealthManager()
     private let metricSyncManager = MetricSyncManager.shared
@@ -17,6 +20,8 @@ class StatsHistoryManager: ObservableObject {
     // Make init private to enforce singleton pattern
     private init() {
         loadEntries()
+        // Reset sync flag on app start to ensure fresh sync
+        appleHealthEntriesSynced = false
     }
     
     // Add this method to force UI updates
@@ -29,7 +34,10 @@ class StatsHistoryManager: ObservableObject {
     
     // Function to sync all manual entries to Apple Health
     func syncManualEntriesToHealthKit() {
-        guard healthManager.isAuthorized else { return }
+        guard healthManager.isWriteAuthorized else { 
+            print("⚠️ Cannot sync manual entries to HealthKit - write access not available")
+            return 
+        }
         
         print("📤 Starting sync of all manual entries to Apple Health")
         
@@ -48,6 +56,30 @@ class StatsHistoryManager: ObservableObject {
         }
     }
     
+    // Function to sync Apple Health entries to backend
+    func syncAppleHealthEntriesToBackend() {
+        // Check if we've already synced Apple Health entries
+        if appleHealthEntriesSynced {
+            print("📤 Apple Health entries already synced to backend, skipping")
+            return
+        }
+        
+        print("📤 Starting sync of Apple Health entries to backend")
+        
+        // Get all Apple Health entries that aren't calculated
+        let appleHealthEntries = entries.filter { $0.source == .appleHealth && !$0.type.isCalculated }
+        print("📤 Found \(appleHealthEntries.count) Apple Health entries to sync to backend")
+        
+        for entry in appleHealthEntries {
+            Task { @MainActor in
+                metricSyncManager.syncEntry(entry, operation: .create)
+            }
+        }
+        
+        // Mark as synced
+        appleHealthEntriesSynced = true
+    }
+    
     // Function to sync all entries to backend database
     func syncAllEntriesToBackend() {
         print("📤 Starting sync of all entries to backend database")
@@ -59,6 +91,12 @@ class StatsHistoryManager: ObservableObject {
         Task { @MainActor in
             metricSyncManager.syncAllEntries(entriesToSync)
         }
+    }
+    
+    // Function to reset Apple Health sync flag (for debugging)
+    func resetAppleHealthSyncFlag() {
+        appleHealthEntriesSynced = false
+        print("🔄 Apple Health sync flag reset")
     }
     
     private func recalculateAllDerivedValues() {
@@ -156,8 +194,6 @@ class StatsHistoryManager: ObservableObject {
             return
         }
         
-        print("⭐️ Adding entry: type=\(entry.type), source=\(entry.source), value=\(entry.value)")
-        
         // Only replace if the entry has the same date, type and source
         if let index = entries.firstIndex(where: {
             Calendar.current.isDate($0.date, inSameDayAs: entry.date) &&
@@ -165,10 +201,13 @@ class StatsHistoryManager: ObservableObject {
             $0.source == entry.source
         }) {
             entries[index] = entry
-            print("⭐️ Replaced existing entry at index \(index)")
         } else {
             entries.append(entry)
-            print("⭐️ Added new entry")
+            
+            // If this is a new Apple Health entry, reset the sync flag
+            if entry.source == .appleHealth {
+                appleHealthEntriesSynced = false
+            }
         }
         
         // Sort entries by date (newest first)
@@ -181,8 +220,8 @@ class StatsHistoryManager: ObservableObject {
             saveEntries()
         }
         
-        // Sync to backend database (for all non-calculated metrics)
-        if !entry.type.isCalculated {
+        // Sync to backend database (for all non-calculated metrics, but not Apple Health entries during import)
+        if !entry.type.isCalculated && entry.source != .appleHealth {
             print("📤 Syncing entry to backend: \(entry.type)")
             Task { @MainActor in
                 metricSyncManager.syncEntry(entry, operation: .create)
@@ -191,23 +230,55 @@ class StatsHistoryManager: ObservableObject {
         
         // If this is a manual entry and not from Apple Health, sync to HealthKit
         if entry.source == .manual && !entry.type.isCalculated {
-            print("⭐️ Attempting to sync manual entry to HealthKit")
-            print("⭐️ HealthKit authorized: \(healthManager.isAuthorized)")
-            
-            healthManager.saveToHealthKit(entry) { success, error in
-                if success {
-                    print("⭐️ Successfully synced \(entry.type) to Apple Health")
-                } else if let error = error {
-                    print("❌ Error syncing to Apple Health: \(error.localizedDescription)")
-                } else {
-                    print("❌ Failed to sync to Apple Health (no error details)")
+            if healthManager.isWriteAuthorized {
+                healthManager.saveToHealthKit(entry) { success, error in
+                    if success {
+                        print("✅ Synced \(entry.type) to Apple Health")
+                    } else if let error = error {
+                        print("❌ Error syncing to Apple Health: \(error.localizedDescription)")
+                    }
                 }
             }
-        } else {
-            print("⭐️ Entry not synced to HealthKit: source=\(entry.source), type=\(entry.type)")
         }
         
         // Force UI refresh
+        triggerUpdate()
+    }
+
+    func addEntries(_ newEntries: [StatEntry]) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async {
+                self.addEntries(newEntries)
+            }
+            return
+        }
+
+        var hasAppleHealthEntries = false
+        
+        for entry in newEntries {
+            if let index = entries.firstIndex(where: {
+                Calendar.current.isDate($0.date, inSameDayAs: entry.date) &&
+                $0.type == entry.type &&
+                $0.source == entry.source
+            }) {
+                entries[index] = entry
+            } else {
+                entries.append(entry)
+                if entry.source == .appleHealth {
+                    appleHealthEntriesSynced = false
+                    hasAppleHealthEntries = true
+                }
+            }
+        }
+
+        entries.sort { $0.date > $1.date }
+        recalculateAllDerivedValues()
+        
+        // If we added Apple Health entries, sync them to backend after all entries are added
+        if hasAppleHealthEntries {
+            syncAppleHealthEntriesToBackend()
+        }
+        
         triggerUpdate()
     }
     
@@ -235,7 +306,7 @@ class StatsHistoryManager: ObservableObject {
         }
         
         // If this was a manual entry, also delete from HealthKit
-        if entry.source == .manual {
+        if entry.source == .manual && healthManager.isWriteAuthorized {
             healthManager.deleteFromHealthKit(entry) { success, error in
                 if success {
                     print("Successfully deleted \(entry.type) from Apple Health")
@@ -243,6 +314,8 @@ class StatsHistoryManager: ObservableObject {
                     print("Error deleting from Apple Health: \(error.localizedDescription)")
                 }
             }
+        } else if entry.source == .manual && !healthManager.isWriteAuthorized {
+            print("⚠️ Cannot delete from HealthKit - write access not available")
         }
         
         saveEntries()
@@ -272,7 +345,7 @@ class StatsHistoryManager: ObservableObject {
             }
             
             // If this is a manual entry and we're authorized, update in HealthKit
-            if oldEntry.source == .manual && entry.type != .bmi && healthManager.isAuthorized {
+            if oldEntry.source == .manual && entry.type != .bmi && healthManager.isWriteAuthorized {
                 print("📤 Syncing updated entry to Apple Health")
                 
                 // First delete the old entry from HealthKit
@@ -370,6 +443,12 @@ class StatsHistoryManager: ObservableObject {
     // Function to clear only entries from a specific source
     func clearEntries(from source: StatSource) {
         entries.removeAll { $0.source == source }
+        
+        // Reset sync flag if Apple Health entries were cleared
+        if source == .appleHealth {
+            appleHealthEntriesSynced = false
+        }
+        
         // Recalculate BMI entries after clearing data
         recalculateAllDerivedValues()
         saveEntries()
