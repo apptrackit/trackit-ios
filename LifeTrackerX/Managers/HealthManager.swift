@@ -1,22 +1,28 @@
 import Foundation
 import HealthKit
 import Combine
+import os.log
 
+// MARK: - Health Manager with Proper Sync Architecture
+@MainActor
 class HealthManager: ObservableObject {
+    static let shared = HealthManager()
+    
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "HealthManager")
     private let healthStore = HKHealthStore()
+    private let localDatabase = LocalDatabaseManager.shared
+    
+    // MARK: - Published Properties
     @Published var isHealthDataAvailable = false
     @Published var isAuthorized = false
     @Published var isWriteAuthorized = false
+    @Published var syncStatus: String = "Ready"
+    @Published var lastSyncDate: Date?
     @Published var fetchingStatus: String = ""
-    // Add this trigger to force view updates
     @Published var lastUpdateTimestamp: Date = Date()
     
-    // Add a timer for periodic syncing
-    private var syncTimer: Timer?
-    private let syncInterval: TimeInterval = 300 // 5 minutes
-    
-    // Health data types we want to read
-    private let typesToRead: Set = [
+    // MARK: - Health Data Types
+    private let typesToRead: Set<HKObjectType> = [
         HKObjectType.quantityType(forIdentifier: .bodyMass)!,
         HKObjectType.quantityType(forIdentifier: .height)!,
         HKObjectType.quantityType(forIdentifier: .bodyFatPercentage)!,
@@ -24,73 +30,56 @@ class HealthManager: ObservableObject {
         HKObjectType.quantityType(forIdentifier: .stepCount)!
     ]
     
-    // Health data types we want to write
-    private let typesToWrite: Set = [
+    private let typesToWrite: Set<HKObjectType> = [
         HKObjectType.quantityType(forIdentifier: .bodyMass)!,
         HKObjectType.quantityType(forIdentifier: .height)!,
         HKObjectType.quantityType(forIdentifier: .bodyFatPercentage)!,
         HKObjectType.quantityType(forIdentifier: .waistCircumference)!
     ]
     
-    // Add a dictionary to track Apple Health sample UUIDs
-    private var healthKitSampleMap: [UUID: String] = [:]
+    // MARK: - Anchored Query Management
+    private var anchoredQueries: [HKQuantityTypeIdentifier: HKAnchoredObjectQuery] = [:]
+    private var observers: [HKQuantityTypeIdentifier: HKObserverQuery] = [:]
     
-    init() {
+    private let supportedTypes: [HKQuantityTypeIdentifier] = [
+        .bodyMass, .height, .bodyFatPercentage, .waistCircumference
+    ]
+    
+    private init() {
         checkHealthDataAvailability()
-        setupPeriodicSync()
+        lastSyncDate = localDatabase.getLastHealthKitSyncDate()
     }
     
     deinit {
-        syncTimer?.invalidate()
+        stopAllObservers()
     }
     
-    private func setupPeriodicSync() {
-        // Cancel existing timer if any
-        syncTimer?.invalidate()
-        
-        // Create a new timer that fires every 5 minutes
-        syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) { [weak self] _ in
-            self?.performBackgroundSync()
-        }
-    }
-    
-    private func performBackgroundSync() {
-        guard isAuthorized else { return }
-        
-        // Get the shared StatsHistoryManager instance
-        let historyManager = StatsHistoryManager.shared
-        importAllHealthData(historyManager: historyManager) { _ in
-            // Background sync completed
-            print("Background sync completed at \(Date())")
-        }
-    }
+    // MARK: - Authorization
     
     private func checkHealthDataAvailability() {
         isHealthDataAvailable = HKHealthStore.isHealthDataAvailable()
         if isHealthDataAvailable {
-            // Only check the status, don't request authorization
-            checkAuthorizationStatus(shouldRequestAccess: false)
+            checkAuthorizationStatus()
         }
     }
     
-    func checkAuthorizationStatus(shouldRequestAccess: Bool = false) {
-        // Check authorization status for all types we want to read
+    private func checkAuthorizationStatus() {
         var allReadAuthorized = true
+        var allWriteAuthorized = true
+        
+        // Check read permissions
         for type in typesToRead {
             let status = healthStore.authorizationStatus(for: type)
-            if status.rawValue == 0 || status.rawValue == 2 { // .notDetermined = 0, .sharingDenied = 2
-                print("🔑 Read access denied for \(type)")
+            if status == .notDetermined || status == .sharingDenied {
                 allReadAuthorized = false
                 break
             }
         }
         
-        // Check authorization status for all types we want to write
-        var allWriteAuthorized = true
+        // Check write permissions
         for type in typesToWrite {
             let status = healthStore.authorizationStatus(for: type)
             if status != .sharingAuthorized {
-                print("🔑 Write access denied for \(type)")
                 allWriteAuthorized = false
                 break
             }
@@ -99,583 +88,511 @@ class HealthManager: ObservableObject {
         DispatchQueue.main.async {
             self.isAuthorized = allReadAuthorized
             self.isWriteAuthorized = allWriteAuthorized
-            print("🔑 isAuthorized (read) set to: \(self.isAuthorized)")
-            print("🔑 isWriteAuthorized set to: \(self.isWriteAuthorized)")
-            
-            // Only request authorization if explicitly asked to do so
-            if !self.isAuthorized && shouldRequestAccess {
-                print("🔑 Not authorized for reading, requesting authorization...")
-                self.requestHealthAuthorization()
-            }
+            self.logger.info("Auth status - Read: \(allReadAuthorized), Write: \(allWriteAuthorized)")
         }
     }
     
-    func requestHealthAuthorization() {
+    func requestHealthAuthorization() async -> Bool {
         guard isHealthDataAvailable else {
-            print("❌ HealthKit not available")
-            return
+            logger.error("HealthKit not available")
+            return false
         }
         
-        print("🔑 Requesting HealthKit authorization...")
-        print("🔑 Types to write: \(typesToWrite)")
-        print("🔑 Types to read: \(typesToRead)")
+        logger.info("Requesting HealthKit authorization...")
         
-        // Request authorization for both reading and writing
-        healthStore.requestAuthorization(toShare: typesToWrite, read: typesToRead) { [weak self] success, error in
-            guard let self = self else { return }
+        do {
+            let granted = try await healthStore.requestAuthorization(toShare: Set(typesToWrite), read: Set(typesToRead))
             
-            DispatchQueue.main.async {
-                if let error = error {
-                    print("❌ HealthKit authorization error: \(error.localizedDescription)")
-                    self.fetchingStatus = "Authorization error: \(error.localizedDescription)"
-                }
+            await MainActor.run {
+                checkAuthorizationStatus()
                 
-                // Re-check authorization status for all types
-                var allReadAuthorized = true
-                for type in self.typesToRead {
-                    let status = self.healthStore.authorizationStatus(for: type)
-                    if status.rawValue == 0 || status.rawValue == 2 { // .notDetermined = 0, .sharingDenied = 2
-                        print("🔑 Post-request read access denied for \(type)")
-                        allReadAuthorized = false
-                        break
-                    }
-                }
-                
-                var allWriteAuthorized = true
-                for type in self.typesToWrite {
-                    let status = self.healthStore.authorizationStatus(for: type)
-                    if status != .sharingAuthorized {
-                        print("🔑 Post-request write access denied for \(type)")
-                        allWriteAuthorized = false
-                        break
-                    }
-                }
-                
-                self.isAuthorized = allReadAuthorized
-                self.isWriteAuthorized = allWriteAuthorized
-                print("🔑 Post-request isAuthorized (read) set to: \(self.isAuthorized)")
-                print("🔑 Post-request isWriteAuthorized set to: \(self.isWriteAuthorized)")
-                
-                if allReadAuthorized {
-                    if allWriteAuthorized {
-                        print("✅ HealthKit authorization successful (read & write access)")
-                        self.fetchingStatus = "Authorization successful"
-                    } else {
-                        print("✅ HealthKit read authorization successful (write access denied)")
-                        self.fetchingStatus = "Read authorization successful"
-                    }
-                    
-                    // Perform initial sync after authorization
-                    let historyManager = StatsHistoryManager.shared
-                    self.importAllHealthData(historyManager: historyManager) { _ in
-                        print("✅ Initial sync completed after authorization")
-                        
-                        // Sync Apple Health entries to backend
-                        historyManager.syncAppleHealthEntriesToBackend()
-                        
-                        // After importing data, sync any existing manual entries only if write access is available
-                        if self.isWriteAuthorized {
-                            historyManager.syncManualEntriesToHealthKit()
-                        } else {
-                            print("⚠️ Write access not available - manual entries will not be synced to HealthKit")
-                        }
+                if isAuthorized {
+                    logger.info("HealthKit authorization granted")
+                    // Start observers after authorization
+                    Task {
+                        await setupHealthKitObservers()
+                        await performInitialSync()
                     }
                 } else {
-                    print("❌ HealthKit authorization denied")
-                    self.fetchingStatus = "Authorization denied"
+                    logger.warning("HealthKit authorization denied")
                 }
-            }
-        }
-    }
-    
-    // Import all health data at once
-    func importAllHealthData(historyManager: StatsHistoryManager, completion: @escaping (Bool) -> Void) {
-        DispatchQueue.main.async {
-            self.fetchingStatus = "Starting data import..."
-        }
-        
-        var successCount = 0
-        let totalOperations = 4
-        var completedOperations = 0
-        
-        func checkCompletion(success: Bool) {
-            completedOperations += 1
-            if success {
-                successCount += 1
             }
             
-            if completedOperations == totalOperations {
-                DispatchQueue.main.async {
-                    if successCount == totalOperations {
-                        self.fetchingStatus = "All data imported successfully!"
-                    } else {
-                        self.fetchingStatus = "Partial data import: \(successCount)/\(totalOperations) successful"
-                    }
-                    self.lastUpdateTimestamp = Date()
-                    historyManager.triggerUpdate()
-                    completion(successCount > 0)
-                }
-            }
+            return granted
+        } catch {
+            logger.error("HealthKit authorization error: \(error.localizedDescription)")
+            return false
         }
-        
-        importWeightHistory(historyManager: historyManager, completion: checkCompletion)
-        importHeightHistory(historyManager: historyManager, completion: checkCompletion)
-        importBodyFatHistory(historyManager: historyManager, completion: checkCompletion)
-        importWaistHistory(historyManager: historyManager, completion: checkCompletion)
     }
     
-    // Import all weight data from HealthKit
-    private func importWeightHistory(historyManager: StatsHistoryManager, completion: @escaping (Bool) -> Void) {
-        guard let weightType = HKQuantityType.quantityType(forIdentifier: .bodyMass) else {
-            DispatchQueue.main.async {
-                self.fetchingStatus = "Weight type not available in HealthKit"
-            }
-            completion(false)
+    // Legacy method for backwards compatibility
+    func requestHealthAuthorization() {
+        Task {
+            let _ = await requestHealthAuthorization()
+        }
+    }
+    
+    // MARK: - Observer Setup
+    
+    private func setupHealthKitObservers() async {
+        guard isAuthorized else {
+            logger.warning("Cannot setup observers - not authorized")
             return
         }
         
-        let predicate = HKQuery.predicateForSamples(withStart: Date.distantPast, end: Date(), options: .strictEndDate)
-        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+        logger.info("Setting up HealthKit observers...")
         
-        let query = HKSampleQuery(
-            sampleType: weightType,
-            predicate: predicate,
-            limit: HKObjectQueryNoLimit,
-            sortDescriptors: [sortDescriptor],
-            resultsHandler: { [weak self] query, samples, error in
-                guard let self = self else { return }
+        for typeIdentifier in supportedTypes {
+            guard let quantityType = HKQuantityType.quantityType(forIdentifier: typeIdentifier) else {
+                continue
+            }
+            
+            await setupObserver(for: quantityType, typeIdentifier: typeIdentifier)
+        }
+    }
+    
+    private func setupObserver(for quantityType: HKQuantityType, typeIdentifier: HKQuantityTypeIdentifier) async {
+        // Stop existing observer if any
+        if let existingObserver = observers[typeIdentifier] {
+            healthStore.stop(existingObserver)
+        }
+        
+        let observer = HKObserverQuery(sampleType: quantityType, predicate: nil) { [weak self] query, completionHandler, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                self.logger.error("Observer error for \(typeIdentifier.rawValue): \(error.localizedDescription)")
+                completionHandler()
+                return
+            }
+            
+            self.logger.info("HealthKit data changed for \(typeIdentifier.rawValue)")
+            
+            Task { @MainActor in
+                await self.syncDataFromHealthKit(for: typeIdentifier)
+                completionHandler()
+            }
+        }
+        
+        observers[typeIdentifier] = observer
+        healthStore.execute(observer)
+        
+        logger.info("Set up observer for \(typeIdentifier.rawValue)")
+    }
+    
+    private func stopAllObservers() {
+        for (typeIdentifier, observer) in observers {
+            healthStore.stop(observer)
+            logger.info("Stopped observer for \(typeIdentifier.rawValue)")
+        }
+        observers.removeAll()
+        
+        for (typeIdentifier, query) in anchoredQueries {
+            healthStore.stop(query)
+            logger.info("Stopped anchored query for \(typeIdentifier.rawValue)")
+        }
+        anchoredQueries.removeAll()
+    }
+    
+    // MARK: - Data Syncing
+    
+    func performInitialSync() async {
+        guard isAuthorized else {
+            logger.warning("Cannot perform initial sync - not authorized")
+            return
+        }
+        
+        await MainActor.run {
+            syncStatus = "Syncing from HealthKit..."
+            fetchingStatus = "Syncing from HealthKit..."
+        }
+        
+        logger.info("Starting initial sync from HealthKit")
+        
+        for typeIdentifier in supportedTypes {
+            await syncDataFromHealthKit(for: typeIdentifier)
+        }
+        
+        await MainActor.run {
+            lastSyncDate = Date()
+            lastUpdateTimestamp = Date()
+            localDatabase.updateLastHealthKitSyncDate(lastSyncDate!)
+            syncStatus = "Sync completed"
+            fetchingStatus = "All data imported successfully!"
+            
+            // Reset status after delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                self.syncStatus = "Ready"
+                self.fetchingStatus = ""
+            }
+        }
+        
+        logger.info("Initial sync completed")
+    }
+    
+    private func syncDataFromHealthKit(for typeIdentifier: HKQuantityTypeIdentifier) async {
+        guard let quantityType = HKQuantityType.quantityType(forIdentifier: typeIdentifier) else {
+            logger.error("Invalid quantity type: \(typeIdentifier.rawValue)")
+            return
+        }
+        
+        // Get last sync anchor
+        let anchorKey = "HealthKit_\(typeIdentifier.rawValue)_Anchor"
+        var anchor: HKQueryAnchor?
+        
+        if let anchorData = UserDefaults.standard.data(forKey: anchorKey) {
+            do {
+                anchor = try NSKeyedUnarchiver.unarchivedObject(ofClass: HKQueryAnchor.self, from: anchorData)
+            } catch {
+                logger.error("Failed to unarchive anchor: \(error.localizedDescription)")
+            }
+        }
+        
+        logger.info("Syncing \(typeIdentifier.rawValue) with anchor: \(anchor?.description ?? "none")")
+        
+        await withCheckedContinuation { continuation in
+            let query = HKAnchoredObjectQuery(
+                type: quantityType,
+                predicate: nil,
+                anchor: anchor,
+                limit: HKObjectQueryNoLimit
+            ) { [weak self] query, samples, deletedObjects, newAnchor, error in
+                guard let self = self else {
+                    continuation.resume()
+                    return
+                }
                 
                 if let error = error {
-                    DispatchQueue.main.async {
-                        print("Error fetching weight data: \(error.localizedDescription)")
-                        self.fetchingStatus = "Error fetching weight data: \(error.localizedDescription)"
-                        completion(false)
-                    }
+                    self.logger.error("Anchored query error for \(typeIdentifier.rawValue): \(error.localizedDescription)")
+                    continuation.resume()
                     return
                 }
                 
                 guard let samples = samples as? [HKQuantitySample] else {
-                    DispatchQueue.main.async {
-                        print("No weight samples found")
-                        self.fetchingStatus = "No weight samples found"
-                        completion(true)
-                    }
+                    self.logger.info("No samples returned for \(typeIdentifier.rawValue)")
+                    continuation.resume()
                     return
                 }
                 
-                DispatchQueue.main.async {
-                    self.fetchingStatus = "Fetched \(samples.count) weight samples"
-                    self.syncWithHealthKit(historyManager: historyManager, type: .weight, samples: samples, completion: completion)
-                }
-            }
-        )
-        healthStore.execute(query)
-    }
-    
-    // Import all height data from HealthKit
-    private func importHeightHistory(historyManager: StatsHistoryManager, completion: @escaping (Bool) -> Void) {
-        // Similar implementation with the same pattern as importWeightHistory
-        guard let heightType = HKQuantityType.quantityType(forIdentifier: .height) else {
-            DispatchQueue.main.async {
-                self.fetchingStatus = "Height type not available in HealthKit"
-            }
-            completion(false)
-            return
-        }
-        
-        let predicate = HKQuery.predicateForSamples(withStart: Date.distantPast, end: Date(), options: .strictEndDate)
-        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
-        
-        let query = HKSampleQuery(
-            sampleType: heightType,
-            predicate: predicate,
-            limit: HKObjectQueryNoLimit,
-            sortDescriptors: [sortDescriptor],
-            resultsHandler: { [weak self] query, samples, error in
-                guard let self = self else { return }
+                self.logger.info("Processing \(samples.count) samples for \(typeIdentifier.rawValue)")
                 
-                if let error = error {
-                    DispatchQueue.main.async {
-                        print("Error fetching height data: \(error.localizedDescription)")
-                        self.fetchingStatus = "Error fetching height data: \(error.localizedDescription)"
-                        completion(false)
+                Task { @MainActor in
+                    await self.processHealthKitSamples(samples, for: typeIdentifier)
+                    
+                    // Process deletions
+                    if let deletedObjects = deletedObjects {
+                        await self.processHealthKitDeletions(deletedObjects, for: typeIdentifier)
                     }
-                    return
-                }
-                
-                guard let samples = samples as? [HKQuantitySample] else {
-                    DispatchQueue.main.async {
-                        print("No height samples found")
-                        self.fetchingStatus = "No height samples found"
-                        completion(true)
+                    
+                    // Save new anchor
+                    if let newAnchor = newAnchor {
+                        do {
+                            let anchorData = try NSKeyedArchiver.archivedData(withRootObject: newAnchor, requiringSecureCoding: true)
+                            UserDefaults.standard.set(anchorData, forKey: anchorKey)
+                            self.logger.info("Saved new anchor for \(typeIdentifier.rawValue)")
+                        } catch {
+                            self.logger.error("Failed to archive new anchor: \(error.localizedDescription)")
+                        }
                     }
-                    return
-                }
-                
-                DispatchQueue.main.async {
-                    self.fetchingStatus = "Fetched \(samples.count) height samples"
-                    self.syncWithHealthKit(historyManager: historyManager, type: .height, samples: samples, completion: completion)
+                    
+                    continuation.resume()
                 }
             }
-        )
-        healthStore.execute(query)
+            
+            // Store the query for potential cancellation
+            anchoredQueries[typeIdentifier] = query
+            healthStore.execute(query)
+        }
     }
     
-    // Import all body fat data from HealthKit
-    private func importBodyFatHistory(historyManager: StatsHistoryManager, completion: @escaping (Bool) -> Void) {
-        guard let bodyFatType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage) else {
-            DispatchQueue.main.async {
-                self.fetchingStatus = "Body fat type not available in HealthKit"
-            }
-            completion(false)
-            return
-        }
-        
-        let predicate = HKQuery.predicateForSamples(withStart: Date.distantPast, end: Date(), options: .strictEndDate)
-        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
-        
-        let query = HKSampleQuery(
-            sampleType: bodyFatType,
-            predicate: predicate,
-            limit: HKObjectQueryNoLimit,
-            sortDescriptors: [sortDescriptor]
-        ) { [weak self] query, samples, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                DispatchQueue.main.async {
-                    print("Error fetching body fat data: \(error.localizedDescription)")
-                    self.fetchingStatus = "Error fetching body fat data: \(error.localizedDescription)"
-                    completion(false)
-                }
-                return
-            }
-            
-            guard let samples = samples as? [HKQuantitySample] else {
-                DispatchQueue.main.async {
-                    print("No body fat samples found")
-                    self.fetchingStatus = "No body fat samples found"
-                    completion(true)
-                }
-                return
-            }
-            
-            DispatchQueue.main.async {
-                self.fetchingStatus = "Fetched \(samples.count) body fat samples"
-                self.syncWithHealthKit(historyManager: historyManager, type: .bodyFat, samples: samples, completion: completion)
-            }
-        }
-        healthStore.execute(query)
-    }
+    // MARK: - Sample Processing
     
-    // Import waist circumference data from HealthKit
-    private func importWaistHistory(historyManager: StatsHistoryManager, completion: @escaping (Bool) -> Void) {
-        guard let waistType = HKQuantityType.quantityType(forIdentifier: .waistCircumference) else {
-            DispatchQueue.main.async {
-                self.fetchingStatus = "Waist circumference type not available in HealthKit"
-            }
-            completion(false)
-            return
-        }
-        
-        let predicate = HKQuery.predicateForSamples(withStart: Date.distantPast, end: Date(), options: .strictEndDate)
-        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
-        
-        let query = HKSampleQuery(
-            sampleType: waistType,
-            predicate: predicate,
-            limit: HKObjectQueryNoLimit,
-            sortDescriptors: [sortDescriptor]
-        ) { [weak self] query, samples, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                DispatchQueue.main.async {
-                    print("Error fetching waist data: \(error.localizedDescription)")
-                    self.fetchingStatus = "Error fetching waist data: \(error.localizedDescription)"
-                    completion(false)
-                }
-                return
-            }
-            
-            guard let samples = samples as? [HKQuantitySample] else {
-                DispatchQueue.main.async {
-                    print("No waist samples found")
-                    self.fetchingStatus = "No waist samples found"
-                    completion(true)
-                }
-                return
-            }
-            
-            DispatchQueue.main.async {
-                self.fetchingStatus = "Fetched \(samples.count) waist samples"
-                self.syncWithHealthKit(historyManager: historyManager, type: .waist, samples: samples, completion: completion)
-            }
-        }
-        healthStore.execute(query)
-    }
-    
-    // Function to get the HealthKit sample UUID for a StatEntry
-    func getHealthKitSampleUUID(for entry: StatEntry) -> String? {
-        return healthKitSampleMap[entry.id]
-    }
-    
-    // Function to sync with HealthKit and handle deletions
-    private func syncWithHealthKit(historyManager: StatsHistoryManager, type: StatType, samples: [HKQuantitySample], completion: @escaping (Bool) -> Void) {
-        // Get all existing entries of this type from Apple Health
-        let existingEntries = historyManager.getEntries(for: type, source: .appleHealth)
-        
-        // Create a set of sample UUIDs from HealthKit
-        let currentSampleUUIDs = Set(samples.map { $0.uuid.uuidString })
-        
-        // Find entries that need to be deleted (exist in our app but not in HealthKit)
-        let entriesToDelete = existingEntries.filter { entry in
-            if let sampleUUID = getHealthKitSampleUUID(for: entry) {
-                return !currentSampleUUIDs.contains(sampleUUID)
-            }
-            return true // If we don't have a sample UUID, delete it
-        }
-        
-        // Delete entries that no longer exist in HealthKit
-        for entry in entriesToDelete {
-            print("🗑️ Deleting entry that no longer exists in HealthKit: \(entry.type) from \(entry.date)")
-            historyManager.removeEntry(entry)
-        }
-        
-        // Add or update entries from HealthKit
-        var newEntries: [StatEntry] = []
-        var addedCount = 0
-        var skippedCount = 0
+    private func processHealthKitSamples(_ samples: [HKQuantitySample], for typeIdentifier: HKQuantityTypeIdentifier) async {
+        let metricTypeId = getMetricTypeId(for: typeIdentifier)
         
         for sample in samples {
+            // Skip samples that were created by our app to avoid circular sync
             if let metadata = sample.metadata,
                let source = metadata["source"] as? String,
                source == "LifeTrackerX" {
-                skippedCount += 1
+                logger.info("Skipping self-created sample")
                 continue
             }
             
-            let entry: StatEntry
-            switch type {
-            case .weight:
-                let weightInKg = sample.quantity.doubleValue(for: HKUnit.gramUnit(with: .kilo))
-                entry = StatEntry(date: sample.startDate, value: weightInKg, type: .weight, source: .appleHealth)
-            case .height:
-                let heightInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
-                entry = StatEntry(date: sample.startDate, value: heightInCm, type: .height, source: .appleHealth)
-            case .bodyFat:
-                let bodyFatDecimal = sample.quantity.doubleValue(for: HKUnit.percent())
-                let bodyFatPercentage = bodyFatDecimal * 100.0
-                entry = StatEntry(date: sample.startDate, value: bodyFatPercentage, type: .bodyFat, source: .appleHealth)
-            case .waist:
-                let waistInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
-                entry = StatEntry(date: sample.startDate, value: waistInCm, type: .waist, source: .appleHealth)
-            default:
+            let healthkitId = sample.uuid.uuidString
+            
+            // Check if we already have this sample to avoid duplicates
+            if localDatabase.entryExists(healthkitId: healthkitId) {
+                logger.info("Sample already exists, skipping: \(healthkitId)")
                 continue
             }
             
-            let existingEntry = existingEntries.first { existing in
-                Calendar.current.isDate(existing.date, inSameDayAs: entry.date) &&
-                existing.type == entry.type &&
-                existing.source == entry.source
-            }
+            // Convert HealthKit sample to our format
+            let value = convertHealthKitValue(sample.quantity, for: typeIdentifier)
             
-            if existingEntry != nil {
-                skippedCount += 1
-                continue
-            }
+            // Create entry in local database
+            let _ = localDatabase.createEntry(
+                metricTypeId: metricTypeId,
+                value: value,
+                date: sample.startDate,
+                source: .healthKit,
+                healthkitId: healthkitId,
+                syncStatus: .pendingCreate
+            )
             
-            healthKitSampleMap[entry.id] = sample.uuid.uuidString
-            newEntries.append(entry)
-            addedCount += 1
+            logger.info("Created entry from HealthKit: type=\(metricTypeId), value=\(value), date=\(sample.startDate)")
         }
-        
-        if !newEntries.isEmpty {
-            historyManager.addEntries(newEntries)
-        }
-        
-        print("📊 Sync completed for \(type): Added \(addedCount) entries, Skipped \(skippedCount) duplicates, Deleted \(entriesToDelete.count) entries")
-        completion(true)
     }
     
-    // Function to save a manual entry to HealthKit
+    private func processHealthKitDeletions(_ deletedObjects: [HKDeletedObject], for typeIdentifier: HKQuantityTypeIdentifier) async {
+        for deletedObject in deletedObjects {
+            let healthkitId = deletedObject.uuid.uuidString
+            
+            // Find and mark the local entry for deletion
+            let allEntries = localDatabase.getAllEntries(includeDeleted: false)
+            if let entryToDelete = allEntries.first(where: { $0.healthkitId == healthkitId }) {
+                let _ = localDatabase.markEntryForDeletion(uuid: entryToDelete.uuid!)
+                logger.info("Marked HealthKit deleted sample for deletion: \(healthkitId)")
+            }
+        }
+    }
+    
+    // MARK: - Value Conversion
+    
+    private func convertHealthKitValue(_ quantity: HKQuantity, for typeIdentifier: HKQuantityTypeIdentifier) -> Double {
+        switch typeIdentifier {
+        case .bodyMass:
+            return quantity.doubleValue(for: HKUnit.gramUnit(with: .kilo))
+        case .height:
+            return quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
+        case .bodyFatPercentage:
+            return quantity.doubleValue(for: HKUnit.percent()) * 100.0 // Convert to percentage
+        case .waistCircumference:
+            return quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
+        default:
+            return quantity.doubleValue(for: HKUnit.count())
+        }
+    }
+    
+    private func getMetricTypeId(for typeIdentifier: HKQuantityTypeIdentifier) -> Int {
+        switch typeIdentifier {
+        case .bodyMass: return 1
+        case .height: return 2
+        case .bodyFatPercentage: return 3
+        case .waistCircumference: return 4
+        default: return 0
+        }
+    }
+    
+    // MARK: - Writing to HealthKit
+    
+    func saveToHealthKit(_ entry: HealthMetric) async -> Bool {
+        guard isWriteAuthorized else {
+            logger.warning("Cannot save to HealthKit - write access denied")
+            return false
+        }
+        
+        guard let typeIdentifier = getHealthKitTypeIdentifier(for: Int(entry.metricTypeId)) else {
+            logger.error("Unsupported metric type for HealthKit: \(entry.metricTypeId)")
+            return false
+        }
+        
+        guard let quantityType = HKQuantityType.quantityType(forIdentifier: typeIdentifier) else {
+            logger.error("Invalid HealthKit quantity type: \(typeIdentifier.rawValue)")
+            return false
+        }
+        
+        let unit = getHealthKitUnit(for: typeIdentifier)
+        let convertedValue = convertToHealthKitValue(entry.value, for: typeIdentifier)
+        let quantity = HKQuantity(unit: unit, doubleValue: convertedValue)
+        
+        let sample = HKQuantitySample(
+            type: quantityType,
+            quantity: quantity,
+            start: entry.date!,
+            end: entry.date!,
+            metadata: [
+                "source": "LifeTrackerX",
+                "entryId": entry.uuid!.uuidString
+            ]
+        )
+        
+        do {
+            try await healthStore.save(sample)
+            
+            // Update local entry with HealthKit ID
+            let _ = localDatabase.updateEntry(
+                uuid: entry.uuid!,
+                healthkitId: sample.uuid.uuidString
+            )
+            
+            logger.info("Successfully saved to HealthKit: type=\(entry.metricTypeId), value=\(entry.value)")
+            return true
+        } catch {
+            logger.error("Failed to save to HealthKit: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    // Legacy method with StatEntry for backwards compatibility
     func saveToHealthKit(_ entry: StatEntry, completion: @escaping (Bool, Error?) -> Void) {
-        // Check if we have write authorization
-        guard isWriteAuthorized else {
-            print("❌ Not authorized to write to HealthKit - write access denied")
-            completion(false, nil)
-            return
-        }
-        
-        var quantityType: HKQuantityType?
-        var unit: HKUnit
-        var value = entry.value // Default to the original value
-        
-        switch entry.type {
-        case .weight:
-            quantityType = HKQuantityType.quantityType(forIdentifier: .bodyMass)
-            unit = HKUnit.gramUnit(with: .kilo)
-            print("📝 Preparing to save weight: \(value) \(unit)")
-        case .height:
-            quantityType = HKQuantityType.quantityType(forIdentifier: .height)
-            unit = HKUnit.meterUnit(with: .centi)
-            print("📝 Preparing to save height: \(value) \(unit)")
-        case .bodyFat:
-            quantityType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage)
-            unit = HKUnit.percent()
-            // Convert from percentage (15%) to decimal (0.15)
-            value = entry.value / 100.0
-            print("📝 Preparing to save body fat: \(value) \(unit) (converted from \(entry.value)%)")
-        case .waist:
-            quantityType = HKQuantityType.quantityType(forIdentifier: .waistCircumference)
-            unit = HKUnit.meterUnit(with: .centi)
-            print("📝 Preparing to save waist: \(value) \(unit)")
-        case .bmi, .bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm, .lbm, .fm, .ffmi, .bmr, .bsa:
-            print("❌ \(entry.type) cannot be saved to HealthKit")
-            completion(false, nil)
-            return
-        }
-        
-        guard let quantityType = quantityType else {
-            print("❌ Invalid quantity type")
-            completion(false, nil)
-            return
-        }
-        
-        // Check specific authorization for this type
-        let status = healthStore.authorizationStatus(for: quantityType)
-        print("🔑 Authorization status for \(entry.type): \(status.rawValue)")
-        
-        guard status == .sharingAuthorized else {
-            print("❌ Not authorized to save \(entry.type) to HealthKit")
-            completion(false, nil)
-            return
-        }
-        
-        let quantity = HKQuantity(unit: unit, doubleValue: value)
-        let sample = HKQuantitySample(type: quantityType,
-                                    quantity: quantity,
-                                    start: entry.date,
-                                    end: entry.date,
-                                    metadata: ["source": "LifeTrackerX", "lifeTrackerXEntryId": entry.id.uuidString])
-        
-        print("📝 Attempting to save \(entry.type) to HealthKit: \(value) at \(entry.date)")
-        healthStore.save(sample) { success, error in
-            DispatchQueue.main.async {
-                if success {
-                    print("✅ Successfully saved \(entry.type) to HealthKit: \(value)")
-                } else if let error = error {
-                    print("❌ Error saving to HealthKit: \(error.localizedDescription)")
-                }
-                completion(success, error)
+        // Convert StatEntry to HealthMetric if possible
+        let allEntries = localDatabase.getAllEntries(includeDeleted: false)
+        if let healthMetric = allEntries.first(where: { $0.uuid == entry.id }) {
+            Task {
+                let success = await saveToHealthKit(healthMetric)
+                completion(success, success ? nil : NSError(domain: "HealthKit", code: -1))
             }
+        } else {
+            completion(false, NSError(domain: "HealthKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "Entry not found in local database"]))
         }
     }
     
-    // Function to delete entries from HealthKit
-    func deleteFromHealthKit(_ entry: StatEntry, completion: @escaping (Bool, Error?) -> Void) {
-        // Check if we have write authorization
+    func deleteFromHealthKit(_ entry: HealthMetric) async -> Bool {
         guard isWriteAuthorized else {
-            print("❌ Not authorized to delete from HealthKit - write access denied")
-            completion(false, nil)
-            return
+            logger.warning("Cannot delete from HealthKit - write access denied")
+            return false
         }
         
-        var quantityType: HKQuantityType?
-        
-        switch entry.type {
-        case .weight:
-            quantityType = HKQuantityType.quantityType(forIdentifier: .bodyMass)
-            print("🗑️ Preparing to delete weight entry")
-        case .height:
-            quantityType = HKQuantityType.quantityType(forIdentifier: .height)
-            print("🗑️ Preparing to delete height entry")
-        case .bodyFat:
-            quantityType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage)
-            print("🗑️ Preparing to delete body fat entry")
-        case .waist:
-            quantityType = HKQuantityType.quantityType(forIdentifier: .waistCircumference)
-            print("🗑️ Preparing to delete waist entry")
-        case .bmi, .bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm, .lbm, .fm, .ffmi, .bmr, .bsa:
-            print("❌ Cannot delete \(entry.type) from HealthKit - not supported")
-            completion(false, nil)
-            return
+        guard let healthkitId = entry.healthkitId,
+              let uuid = UUID(uuidString: healthkitId) else {
+            logger.warning("No HealthKit ID found for entry")
+            return false
         }
         
-        guard let quantityType = quantityType else {
-            print("❌ Invalid quantity type for deletion")
-            completion(false, nil)
-            return
+        guard let typeIdentifier = getHealthKitTypeIdentifier(for: Int(entry.metricTypeId)),
+              let quantityType = HKQuantityType.quantityType(forIdentifier: typeIdentifier) else {
+            logger.error("Invalid HealthKit type for deletion")
+            return false
         }
         
-        // Check specific authorization for this type
-        let status = healthStore.authorizationStatus(for: quantityType)
-        print("🔑 Authorization status for deleting \(entry.type): \(status.rawValue)")
+        // Find and delete the specific sample
+        let predicate = NSPredicate(format: "UUID == %@", uuid as CVarArg)
         
-        guard status == .sharingAuthorized else {
-            print("❌ Not authorized to delete \(entry.type) from HealthKit")
-            completion(false, nil)
-            return
-        }
-        
-        // Create a predicate to find samples with the exact date
-        let predicate = HKQuery.predicateForSamples(withStart: entry.date,
-                                                   end: entry.date.addingTimeInterval(1),
-                                                   options: .strictStartDate)
-        
-        print("🔍 Searching for \(entry.type) entries to delete at \(entry.date)")
-        
-        // Query for samples to delete
-        let query = HKSampleQuery(sampleType: quantityType,
-                                predicate: predicate,
-                                limit: HKObjectQueryNoLimit,
-                                sortDescriptors: nil) { [weak self] (query, samples, error) in
-            guard let self = self else { return }
-            
-            if let error = error {
-                print("❌ Error searching for samples to delete: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    completion(false, error)
+        return await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(
+                sampleType: quantityType,
+                predicate: predicate,
+                limit: 1,
+                sortDescriptors: nil
+            ) { [weak self] query, samples, error in
+                guard let self = self else {
+                    continuation.resume(returning: false)
+                    return
                 }
-                return
-            }
-            
-            guard let samplesToDelete = samples as? [HKQuantitySample] else {
-                print("❌ No matching samples found to delete")
-                DispatchQueue.main.async {
-                    completion(false, nil)
+                
+                if let error = error {
+                    self.logger.error("Error finding sample to delete: \(error.localizedDescription)")
+                    continuation.resume(returning: false)
+                    return
                 }
-                return
-            }
-            
-            if samplesToDelete.isEmpty {
-                print("⚠️ No samples found to delete for \(entry.type) at \(entry.date)")
-                DispatchQueue.main.async {
-                    completion(true, nil) // Return success since there's nothing to delete
+                
+                guard let samples = samples, !samples.isEmpty else {
+                    self.logger.warning("Sample not found for deletion")
+                    continuation.resume(returning: true) // Consider it success if already gone
+                    return
                 }
-                return
-            }
-            
-            print("🗑️ Found \(samplesToDelete.count) samples to delete")
-            
-            // Delete the found samples
-            self.healthStore.delete(samplesToDelete) { (success, error) in
-                DispatchQueue.main.async {
-                    if success {
-                        print("✅ Successfully deleted \(samplesToDelete.count) \(entry.type) entries from HealthKit")
-                    } else if let error = error {
-                        print("❌ Error deleting from HealthKit: \(error.localizedDescription)")
+                
+                Task {
+                    do {
+                        try await self.healthStore.delete(samples)
+                        self.logger.info("Successfully deleted sample from HealthKit")
+                        continuation.resume(returning: true)
+                    } catch {
+                        self.logger.error("Failed to delete sample from HealthKit: \(error.localizedDescription)")
+                        continuation.resume(returning: false)
                     }
-                    completion(success, error)
                 }
+            }
+            
+            healthStore.execute(query)
+        }
+    }
+    
+    // Legacy method with StatEntry
+    func deleteFromHealthKit(_ entry: StatEntry, completion: @escaping (Bool, Error?) -> Void) {
+        let allEntries = localDatabase.getAllEntries(includeDeleted: false)
+        if let healthMetric = allEntries.first(where: { $0.uuid == entry.id }) {
+            Task {
+                let success = await deleteFromHealthKit(healthMetric)
+                completion(success, success ? nil : NSError(domain: "HealthKit", code: -1))
+            }
+        } else {
+            completion(false, NSError(domain: "HealthKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "Entry not found in local database"]))
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func getHealthKitTypeIdentifier(for metricTypeId: Int) -> HKQuantityTypeIdentifier? {
+        switch metricTypeId {
+        case 1: return .bodyMass
+        case 2: return .height
+        case 3: return .bodyFatPercentage
+        case 4: return .waistCircumference
+        default: return nil
+        }
+    }
+    
+    private func getHealthKitUnit(for typeIdentifier: HKQuantityTypeIdentifier) -> HKUnit {
+        switch typeIdentifier {
+        case .bodyMass: return HKUnit.gramUnit(with: .kilo)
+        case .height: return HKUnit.meterUnit(with: .centi)
+        case .bodyFatPercentage: return HKUnit.percent()
+        case .waistCircumference: return HKUnit.meterUnit(with: .centi)
+        default: return HKUnit.count()
+        }
+    }
+    
+    private func convertToHealthKitValue(_ value: Double, for typeIdentifier: HKQuantityTypeIdentifier) -> Double {
+        switch typeIdentifier {
+        case .bodyFatPercentage:
+            return value / 100.0 // Convert percentage to decimal
+        default:
+            return value
+        }
+    }
+    
+    // MARK: - Legacy Methods for Backwards Compatibility
+    
+    func importAllHealthData(historyManager: StatsHistoryManager, completion: @escaping (Bool) -> Void) {
+        Task {
+            await performInitialSync()
+            completion(true)
+        }
+    }
+    
+    func clearHealthKitSampleMap() {
+        // No longer needed with new architecture
+        logger.info("Legacy method called - no action needed")
+    }
+    
+    // MARK: - Public Interface
+    
+    func startHealthKitSync() async {
+        guard isAuthorized else {
+            let authorized = await requestHealthAuthorization()
+            if !authorized {
+                return
             }
         }
         
-        healthStore.execute(query)
+        await setupHealthKitObservers()
+        await performInitialSync()
     }
     
-    // Add a function to clear the sample map when disconnecting
-    func clearHealthKitSampleMap() {
-        healthKitSampleMap.removeAll()
+    func stopHealthKitSync() {
+        stopAllObservers()
+        syncStatus = "Stopped"
+        logger.info("HealthKit sync stopped")
+    }
+    
+    func forceSyncFromHealthKit() async {
+        guard isAuthorized else {
+            logger.warning("Cannot force sync - not authorized")
+            return
+        }
+        
+        await performInitialSync()
     }
 }
