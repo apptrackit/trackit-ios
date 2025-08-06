@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="22522" systemVersion="23C71" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithSwiftData="YES" userDefinedModelVersionIdentifier="">
+    <entity name="HealthMetric" representedClassName="HealthMetric" syncable="YES" codeGenerationType="class">
+        <attribute name="uuid" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="metricTypeId" optional="NO" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="value" optional="NO" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="date" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="backendId" optional="YES" attributeType="Integer 32" usesScalarValueType="YES"/>
+        <attribute name="healthkitId" optional="YES" attributeType="String"/>
+        <attribute name="syncStatus" optional="NO" attributeType="String" defaultValueString="pendingCreate"/>
+        <attribute name="source" optional="NO" attributeType="String" defaultValueString="localApp"/>
+        <attribute name="deletedLocally" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="modifiedAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <uniquenessConstraints>
+            <uniquenessConstraint>
+                <constraint value="uuid"/>
+            </uniquenessConstraint>
+        </uniquenessConstraints>
+    </entity>
+</model>
