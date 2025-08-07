@@ -14,8 +14,9 @@ class StatsHistoryManager: ObservableObject {
     private var appleHealthEntriesSynced = false
     
     // Reference to HealthManager and MetricSyncManager
-    private let healthManager = HealthManager()
+    private let healthManager = HealthKitSyncManager.shared
     private let metricSyncManager = MetricSyncManager.shared
+    private let syncCoordinator = SyncCoordinator.shared
     
     // Make init private to enforce singleton pattern
     private init() {
@@ -483,5 +484,42 @@ class StatsHistoryManager: ObservableObject {
             // Don't throw error - just log it and continue with empty data
             // This allows the app to work even if the endpoint doesn't exist yet
         }
+    }
+    
+    // MARK: - Migration Bridge Methods
+    
+    /// Migrate existing StatEntry data to the new Metric system
+    func migrateToNewSyncSystem() {
+        print("🔄 Migrating existing data to new sync system...")
+        
+        var migratedCount = 0
+        
+        for entry in entries {
+            // Skip calculated values (BMI, etc.) as they shouldn't be stored as base metrics
+            guard !entry.type.isCalculated else { continue }
+            
+            let metric = Metric.fromStatEntry(entry)
+            
+            // Check if this metric already exists in the new system
+            let existingMetric = syncCoordinator.getMetrics(for: metric.type)
+                .first { Calendar.current.isDate($0.date, inSameDayAs: entry.date) }
+            
+            if existingMetric == nil {
+                Task {
+                    await syncCoordinator.addManualEntry(metric)
+                }
+                migratedCount += 1
+            }
+        }
+        
+        print("✅ Migrated \(migratedCount) entries to new sync system")
+    }
+    
+    /// Check if migration is needed (if new system is empty but old system has data)
+    func migrationNeeded() -> Bool {
+        let newSystemCount = syncCoordinator.getAllMetrics().count
+        let oldSystemCount = entries.filter { !$0.type.isCalculated }.count
+        
+        return newSystemCount == 0 && oldSystemCount > 0
     }
 }

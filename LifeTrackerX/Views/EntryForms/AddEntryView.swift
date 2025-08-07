@@ -11,6 +11,9 @@ struct AddEntryView: View {
     @State private var showAlert = false
     @FocusState private var isValueFieldFocused: Bool
     
+    // Add SyncCoordinator for enhanced functionality
+    @StateObject private var syncCoordinator = SyncCoordinator.shared
+    
     private var canSave: Bool {
         !value.isEmpty && Double(value.replacingOccurrences(of: ",", with: ".")) != nil
     }
@@ -176,8 +179,25 @@ struct AddEntryView: View {
     private func saveEntry() {
         guard let valueDouble = Double(value.replacingOccurrences(of: ",", with: ".")) else { return }
         if date <= Date() {
+            // Create metric for new sync system
+            let metricType = MetricType.fromStatType(statType)
+            let metric = Metric(
+                value: valueDouble,
+                type: metricType,
+                source: .manual,
+                date: date,
+                unit: metricType.defaultUnit
+            )
+            
+            // Save using both systems for compatibility
             let entry = StatEntry(date: date, value: valueDouble, type: statType)
             historyManager.addEntry(entry)
+            
+            // Also save to new sync system
+            Task {
+                await syncCoordinator.addManualEntry(metric)
+            }
+            
             dismiss()
         } else {
             showAlert = true

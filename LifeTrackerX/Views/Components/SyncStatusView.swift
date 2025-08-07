@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SyncStatusView: View {
-    @StateObject private var syncManager = MetricSyncManager.shared
+    @StateObject private var syncCoordinator = SyncCoordinator.shared
     
     var body: some View {
         HStack(spacing: 8) {
@@ -16,11 +16,19 @@ struct SyncStatusView: View {
                 .foregroundColor(.secondary)
             
             // Pending operations count
-            if syncManager.pendingOperationsCount > 0 {
-                Text("(\(syncManager.pendingOperationsCount))")
+            let summary = syncCoordinator.getDataSummary()
+            let totalPending = summary.pendingHealthKitSync + summary.pendingBackendSync
+            if totalPending > 0 {
+                Text("(\(totalPending))")
                     .font(.caption)
                     .foregroundColor(.orange)
                     .fontWeight(.medium)
+            }
+            
+            // Sync indicator
+            if syncCoordinator.overallStatus == .syncing {
+                ProgressView()
+                    .scaleEffect(0.6)
             }
         }
         .padding(.horizontal, 12)
@@ -30,28 +38,20 @@ struct SyncStatusView: View {
     }
     
     private var networkStatusColor: Color {
-        if syncManager.isOnline {
-            return .green
-        } else {
+        switch syncCoordinator.overallStatus {
+        case .offline:
             return .red
+        case .healthKitNotAuthorized, .notAuthenticated:
+            return .orange
+        case .synced:
+            return .green
+        default:
+            return .blue
         }
     }
     
     private var syncStatusText: String {
-        if !syncManager.isOnline {
-            return "Offline"
-        }
-        
-        switch syncManager.syncStatus {
-        case .pending:
-            return "Pending"
-        case .inProgress:
-            return "Syncing..."
-        case .completed:
-            return "Synced"
-        case .failed:
-            return "Sync Failed"
-        }
+        return syncCoordinator.statusDescription
     }
 }
 

@@ -20,6 +20,21 @@ struct FitnessApp: App {
             windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
         }
         AppDelegate.orientationLock = .portrait
+        
+        // Perform data migration if needed
+        performMigrationIfNeeded()
+    }
+    
+    private func performMigrationIfNeeded() {
+        let historyManager = StatsHistoryManager.shared
+        
+        // Check if migration is needed
+        if historyManager.migrationNeeded() {
+            print("🔄 Migration needed - starting data migration")
+            historyManager.migrateToNewSyncSystem()
+        } else {
+            print("✅ No migration needed")
+        }
     }
     
     var body: some Scene {

@@ -11,6 +11,9 @@ struct TrackDataView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isValueFieldFocused: Bool
     
+    // Add SyncCoordinator for enhanced functionality
+    @StateObject private var syncCoordinator = SyncCoordinator.shared
+    
     private var canSave: Bool {
         !value.isEmpty && Double(value.replacingOccurrences(of: ",", with: ".")) != nil
     }
@@ -187,8 +190,26 @@ struct TrackDataView: View {
     
     private func saveEntry() {
         guard let valueDouble = Double(value.replacingOccurrences(of: ",", with: ".")) else { return }
+        
+        // Create metric for new sync system
+        let metricType = MetricType.fromStatType(selectedType)
+        let metric = Metric(
+            value: valueDouble,
+            type: metricType,
+            source: .manual,
+            date: date,
+            unit: metricType.defaultUnit
+        )
+        
+        // Save using both systems for compatibility
         let entry = StatEntry(date: date, value: valueDouble, type: selectedType)
         historyManager.addEntry(entry)
+        
+        // Also save to new sync system
+        Task {
+            await syncCoordinator.addManualEntry(metric)
+        }
+        
         dismiss()
     }
 }

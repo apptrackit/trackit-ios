@@ -4,7 +4,8 @@ import HealthKit
 struct AccountView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authViewModel: AuthViewModel
-    @StateObject private var healthManager = HealthManager()
+    @StateObject private var healthManager = HealthKitSyncManager.shared
+    @StateObject private var syncCoordinator = SyncCoordinator.shared
     @ObservedObject var historyManager: StatsHistoryManager
     @State private var showHealthAccessSheet = false
     @State private var showExportSheet = false

@@ -2,8 +2,8 @@ import SwiftUI
 import Charts
 
 struct DashboardView: View {
-    @StateObject private var historyManager = StatsHistoryManager.shared
-    @StateObject private var healthManager = HealthManager()
+    @StateObject private var syncCoordinator = SyncCoordinator.shared
+    @StateObject private var healthManager = HealthKitSyncManager.shared // Keep for compatibility
     @State private var showingAddEntrySheet = false
     @State private var showingAccountSheet = false
     @State private var selectedTimeFrame: TimeFrame = .sixMonths
@@ -12,17 +12,22 @@ struct DashboardView: View {
     @State private var isRefreshing = false
     @EnvironmentObject var authViewModel: AuthViewModel
     
-    // Computed properties to get latest values or nil
+    // Use SyncCoordinator for data retrieval while maintaining compatibility
+    private var historyManager: SyncCoordinator {
+        return syncCoordinator
+    }
+    
+    // Computed properties to get latest values using new system
     private var weight: Double? {
-        historyManager.getLatestValue(for: .weight)
+        syncCoordinator.getLatestValue(for: .weight)
     }
     
     private var height: Double? {
-        historyManager.getLatestValue(for: .height)
+        syncCoordinator.getLatestValue(for: .height)
     }
     
     private var bodyFat: Double? {
-        historyManager.getLatestValue(for: .bodyFat)
+        syncCoordinator.getLatestValue(for: .bodyFat)
     }
     
     private var bmi: Double? {
@@ -36,7 +41,7 @@ struct DashboardView: View {
     private var recentMeasurements: [StatEntry] {
         let types: [StatType] = [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder, .glutes]
         return types.flatMap { type in
-            historyManager.getEntries(for: type).prefix(1)
+            syncCoordinator.getEntries(for: type).prefix(1)
         }.sorted { $0.date > $1.date }
     }
     
@@ -238,10 +243,10 @@ struct DashboardView: View {
             }
         }
         .sheet(isPresented: $showingAddEntrySheet) {
-            TrackDataView(historyManager: historyManager)
+            TrackDataView(historyManager: StatsHistoryManager.shared)
         }
         .sheet(isPresented: $showingAccountSheet) {
-            AccountView(historyManager: historyManager)
+            AccountView(historyManager: StatsHistoryManager.shared)
         }
         .sheet(isPresented: $showingAddPhotoSheet) {
             AddPhotoView(
@@ -265,29 +270,13 @@ struct DashboardView: View {
         guard !isRefreshing else { return }
         isRefreshing = true
         
-        if healthManager.isAuthorized {
-            do {
-                // Create a continuation that can only be resumed once
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    var hasResumed = false
-                    
-                    healthManager.importAllHealthData(historyManager: historyManager) { success in
-                        // Ensure we only resume once
-                        guard !hasResumed else { return }
-                        hasResumed = true
-                        
-                        if success {
-                            print("Data refresh completed successfully")
-                            continuation.resume()
-                        } else {
-                            print("Data refresh failed")
-                            continuation.resume(throwing: NSError(domain: "DashboardView", code: -1, userInfo: [NSLocalizedDescriptionKey: "Data refresh failed"]))
-                        }
-                    }
-                }
-            } catch {
-                print("Error during data refresh: \(error.localizedDescription)")
-            }
+        // Use the new SyncCoordinator for better sync management
+        let success = await syncCoordinator.performFullSync()
+        
+        if success {
+            print("✅ Data refresh completed successfully")
+        } else {
+            print("❌ Data refresh failed")
         }
         
         isRefreshing = false
@@ -342,7 +331,7 @@ struct ProgressChartView: View {
     let title: String
     let value: Double
     let unit: String
-    let historyManager: StatsHistoryManager
+    let historyManager: SyncCoordinator
     let statType: StatType
     let timeFrame: TimeFrame
     
