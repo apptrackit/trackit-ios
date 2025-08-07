@@ -2,13 +2,21 @@ import SwiftUI
 
 struct MainTabView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
+    @StateObject private var syncManager = MetricSyncManager.shared
+    @StateObject private var historyManager = StatsHistoryManager.shared
     @State private var selectedTab = 0
+    @State private var hasInitializedSync = false
     
     var body: some View {
         TabView(selection: $selectedTab) {
             // Dashboard Tab
             NavigationStack {
                 DashboardView()
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            CompactSyncStatusView()
+                        }
+                    }
             }
             .tabItem {
                 Label("Dashboard", systemImage: "chart.bar.fill")
@@ -18,6 +26,11 @@ struct MainTabView: View {
             // Progress Tab (measurements)
             NavigationStack {
                 ProgressView()
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            CompactSyncStatusView()
+                        }
+                    }
             }
             .tabItem {
                 Label("Metrics", systemImage: "chart.line.uptrend.xyaxis")
@@ -27,6 +40,11 @@ struct MainTabView: View {
             // Progress Photos Tab (new)
             NavigationStack {
                 ProgressPhotosView()
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            CompactSyncStatusView()
+                        }
+                    }
             }
             .tabItem {
                 Label("Photos", systemImage: "photo.fill")
@@ -34,6 +52,36 @@ struct MainTabView: View {
             .tag(2)
         }
         .accentColor(.green)
+        .onAppear {
+            // Initialize sync on first appear
+            if !hasInitializedSync {
+                hasInitializedSync = true
+                initializeSync()
+            }
+        }
+        .overlay(alignment: .top) {
+            // Show sync status at the top when syncing
+            if syncManager.syncStatus.isSyncing {
+                SyncStatusView()
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .animation(.spring(), value: syncManager.syncStatus.isSyncing)
+            }
+        }
+    }
+    
+    private func initializeSync() {
+        print("🚀 Initializing sync on app launch")
+        
+        // Perform initial sync
+        Task {
+            // Wait a moment for the UI to settle
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            
+            // Start full sync
+            await syncManager.performFullSync()
+        }
     }
 }
 
@@ -61,4 +109,5 @@ struct PlaceholderView: View {
 
 #Preview {
     MainTabView()
+        .environmentObject(AuthViewModel())
 } 

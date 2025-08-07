@@ -430,10 +430,14 @@ class HealthManager: ObservableObject {
         
         // Find entries that need to be deleted (exist in our app but not in HealthKit)
         let entriesToDelete = existingEntries.filter { entry in
-            if let sampleUUID = getHealthKitSampleUUID(for: entry) {
-                return !currentSampleUUIDs.contains(sampleUUID)
+            // Check if this entry has a HealthKit UUID
+            if let healthKitUUID = entry.uuid {
+                return !currentSampleUUIDs.contains(healthKitUUID)
             }
-            return true // If we don't have a sample UUID, delete it
+            // Legacy entries without UUID - check by date
+            return !samples.contains { sample in
+                Calendar.current.isDate(sample.startDate, inSameDayAs: entry.date)
+            }
         }
         
         // Delete entries that no longer exist in HealthKit
@@ -448,6 +452,7 @@ class HealthManager: ObservableObject {
         var skippedCount = 0
         
         for sample in samples {
+            // Skip entries created by our app
             if let metadata = sample.metadata,
                let source = metadata["source"] as? String,
                source == "LifeTrackerX" {
@@ -455,29 +460,70 @@ class HealthManager: ObservableObject {
                 continue
             }
             
+            // Create the entry with proper UUID tracking
             let entry: StatEntry
+            let sampleUUID = sample.uuid.uuidString
+            
             switch type {
             case .weight:
                 let weightInKg = sample.quantity.doubleValue(for: HKUnit.gramUnit(with: .kilo))
-                entry = StatEntry(date: sample.startDate, value: weightInKg, type: .weight, source: .appleHealth)
+                entry = StatEntry(
+                    uuid: sampleUUID,  // Store HealthKit UUID
+                    date: sample.startDate,
+                    value: weightInKg,
+                    type: .weight,
+                    unit: "kg",
+                    source: .appleHealth,
+                    syncedWithHealth: true
+                )
             case .height:
                 let heightInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
-                entry = StatEntry(date: sample.startDate, value: heightInCm, type: .height, source: .appleHealth)
+                entry = StatEntry(
+                    uuid: sampleUUID,  // Store HealthKit UUID
+                    date: sample.startDate,
+                    value: heightInCm,
+                    type: .height,
+                    unit: "cm",
+                    source: .appleHealth,
+                    syncedWithHealth: true
+                )
             case .bodyFat:
                 let bodyFatDecimal = sample.quantity.doubleValue(for: HKUnit.percent())
                 let bodyFatPercentage = bodyFatDecimal * 100.0
-                entry = StatEntry(date: sample.startDate, value: bodyFatPercentage, type: .bodyFat, source: .appleHealth)
+                entry = StatEntry(
+                    uuid: sampleUUID,  // Store HealthKit UUID
+                    date: sample.startDate,
+                    value: bodyFatPercentage,
+                    type: .bodyFat,
+                    unit: "%",
+                    source: .appleHealth,
+                    syncedWithHealth: true
+                )
             case .waist:
                 let waistInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
-                entry = StatEntry(date: sample.startDate, value: waistInCm, type: .waist, source: .appleHealth)
+                entry = StatEntry(
+                    uuid: sampleUUID,  // Store HealthKit UUID
+                    date: sample.startDate,
+                    value: waistInCm,
+                    type: .waist,
+                    unit: "cm",
+                    source: .appleHealth,
+                    syncedWithHealth: true
+                )
             default:
                 continue
             }
             
+            // Check if we already have this entry (by UUID or date/type combination)
             let existingEntry = existingEntries.first { existing in
-                Calendar.current.isDate(existing.date, inSameDayAs: entry.date) &&
-                existing.type == entry.type &&
-                existing.source == entry.source
+                // First check by UUID
+                if let existingUUID = existing.uuid {
+                    return existingUUID == sampleUUID
+                }
+                // Fallback to date/type check for legacy entries
+                return Calendar.current.isDate(existing.date, inSameDayAs: entry.date) &&
+                       existing.type == entry.type &&
+                       existing.source == entry.source
             }
             
             if existingEntry != nil {
@@ -485,7 +531,8 @@ class HealthManager: ObservableObject {
                 continue
             }
             
-            healthKitSampleMap[entry.id] = sample.uuid.uuidString
+            // Track the UUID mapping (for backward compatibility)
+            healthKitSampleMap[entry.id] = sampleUUID
             newEntries.append(entry)
             addedCount += 1
         }
