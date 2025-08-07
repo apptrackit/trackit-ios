@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-// MARK: - User Action Handler
+// MARK: - User Action Handler (Updated for compatibility)
 /// Handles all user-initiated actions with proper sync flow through all 3 layers:
 /// [1] Local Database (immediate)
 /// [2] HealthKit (if authorized and supported)
@@ -12,8 +12,11 @@ class UserActionHandler: ObservableObject {
     
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "UserActions")
     private let localDatabase = LocalDatabaseManager.shared
-    private let healthManager = NewHealthManager.shared
-    private let syncManager = NewSyncManager.shared
+    private let healthManager = HealthManager.shared
+    private let syncManager = MetricSyncManager.shared
+    
+    // MARK: - Published Properties
+    @Published var syncStatus: String = "Ready"
     
     private init() {}
     
@@ -44,23 +47,28 @@ class UserActionHandler: ObservableObject {
                     return
                 }
                 
-                logger.info("✅ Step 1: Saved to local database: \(localEntry.uuid!.uuidString)")
+                logger.info("✅ Step 1: Saved to local database: \(localEntry.uuid)")
                 
                 // Step 2: Save to HealthKit (if authorized and supported metric type)
                 if healthManager.isWriteAuthorized && isHealthKitSupported(metricTypeId: metricTypeId) {
-                    let healthKitSuccess = await healthManager.saveToHealthKit(localEntry)
-                    if healthKitSuccess {
-                        logger.info("✅ Step 2: Saved to HealthKit")
-                    } else {
-                        logger.warning("⚠️ Step 2: Failed to save to HealthKit, but continuing")
+                    if let statEntry = localEntry.toStatEntry() {
+                        healthManager.saveToHealthKit(statEntry) { success, error in
+                            if success {
+                                self.logger.info("✅ Step 2: Saved to HealthKit")
+                            } else {
+                                self.logger.warning("⚠️ Step 2: Failed to save to HealthKit, but continuing")
+                            }
+                        }
                     }
                 } else {
                     logger.info("ℹ️ Step 2: Skipping HealthKit (not authorized or unsupported type)")
                 }
                 
                 // Step 3: Queue for backend sync
-                syncManager.queueForCreation(localEntry)
-                logger.info("✅ Step 3: Queued for backend sync")
+                if let statEntry = localEntry.toStatEntry() {
+                    syncManager.syncEntry(statEntry, operation: .create)
+                    logger.info("✅ Step 3: Queued for backend sync")
+                }
                 
                 completion(true, nil)
                 
@@ -92,8 +100,6 @@ class UserActionHandler: ObservableObject {
                     return
                 }
                 
-                let oldValue = existingEntry.value
-                let oldDate = existingEntry.date!
                 let isHealthKitEntry = existingEntry.sourceEnum == .healthKit
                 
                 // Step 1: Update in local database
@@ -114,29 +120,34 @@ class UserActionHandler: ObservableObject {
                 
                 // Step 2: Update in HealthKit (if applicable)
                 if healthManager.isWriteAuthorized && 
-                   isHealthKitSupported(metricTypeId: Int(existingEntry.metricTypeId)) {
+                   isHealthKitSupported(metricTypeId: existingEntry.metricTypeId) {
                     
-                    // For HealthKit entries, we need to be careful about the sync
-                    if !isHealthKitEntry {
-                        // This was a local app entry, so we can directly update HealthKit
-                        let healthKitSuccess = await healthManager.saveToHealthKit(existingEntry)
-                        if healthKitSuccess {
-                            logger.info("✅ Step 2: Updated in HealthKit")
-                        } else {
-                            logger.warning("⚠️ Step 2: Failed to update in HealthKit")
-                        }
-                    } else {
-                        // This was originally from HealthKit - need to delete old and create new
-                        let deleteSuccess = await healthManager.deleteFromHealthKit(existingEntry)
-                        if deleteSuccess {
-                            let createSuccess = await healthManager.saveToHealthKit(existingEntry)
-                            if createSuccess {
-                                logger.info("✅ Step 2: Replaced entry in HealthKit")
-                            } else {
-                                logger.warning("⚠️ Step 2: Deleted from HealthKit but failed to create new")
+                    if let statEntry = existingEntry.toStatEntry() {
+                        // For HealthKit entries, we need to be careful about the sync
+                        if !isHealthKitEntry {
+                            // This was a local app entry, so we can directly update HealthKit
+                            healthManager.saveToHealthKit(statEntry) { success, error in
+                                if success {
+                                    self.logger.info("✅ Step 2: Updated in HealthKit")
+                                } else {
+                                    self.logger.warning("⚠️ Step 2: Failed to update in HealthKit")
+                                }
                             }
                         } else {
-                            logger.warning("⚠️ Step 2: Failed to delete old entry from HealthKit")
+                            // This was originally from HealthKit - need to delete old and create new
+                            healthManager.deleteFromHealthKit(statEntry) { success, error in
+                                if success {
+                                    self.healthManager.saveToHealthKit(statEntry) { success, error in
+                                        if success {
+                                            self.logger.info("✅ Step 2: Replaced entry in HealthKit")
+                                        } else {
+                                            self.logger.warning("⚠️ Step 2: Deleted from HealthKit but failed to create new")
+                                        }
+                                    }
+                                } else {
+                                    self.logger.warning("⚠️ Step 2: Failed to delete old entry from HealthKit")
+                                }
+                            }
                         }
                     }
                 } else {
@@ -144,8 +155,9 @@ class UserActionHandler: ObservableObject {
                 }
                 
                 // Step 3: Queue for backend sync
-                if let updatedEntry = localDatabase.getEntry(uuid: entryUUID) {
-                    syncManager.queueForUpdate(updatedEntry)
+                if let updatedEntry = localDatabase.getEntry(uuid: entryUUID),
+                   let statEntry = updatedEntry.toStatEntry() {
+                    syncManager.syncEntry(statEntry, operation: .update)
                     logger.info("✅ Step 3: Queued for backend sync")
                 }
                 
@@ -191,22 +203,26 @@ class UserActionHandler: ObservableObject {
                 
                 // Step 2: Delete from HealthKit (if applicable)
                 if healthManager.isWriteAuthorized && 
-                   isHealthKitSupported(metricTypeId: Int(existingEntry.metricTypeId)) &&
+                   isHealthKitSupported(metricTypeId: existingEntry.metricTypeId) &&
                    !isHealthKitEntry { // Only delete from HealthKit if it was originally created by our app
                     
-                    let healthKitDeleteSuccess = await healthManager.deleteFromHealthKit(existingEntry)
-                    if healthKitDeleteSuccess {
-                        logger.info("✅ Step 2: Deleted from HealthKit")
-                    } else {
-                        logger.warning("⚠️ Step 2: Failed to delete from HealthKit")
+                    if let statEntry = existingEntry.toStatEntry() {
+                        healthManager.deleteFromHealthKit(statEntry) { success, error in
+                            if success {
+                                self.logger.info("✅ Step 2: Deleted from HealthKit")
+                            } else {
+                                self.logger.warning("⚠️ Step 2: Failed to delete from HealthKit")
+                            }
+                        }
                     }
                 } else {
                     logger.info("ℹ️ Step 2: Skipping HealthKit deletion (not applicable)")
                 }
                 
                 // Step 3: Queue for backend deletion
-                if let entryToDelete = localDatabase.getEntry(uuid: entryUUID) {
-                    syncManager.queueForDeletion(entryToDelete)
+                if let entryToDelete = localDatabase.getEntry(uuid: entryUUID),
+                   let statEntry = entryToDelete.toStatEntry() {
+                    syncManager.syncEntry(statEntry, operation: .delete)
                     logger.info("✅ Step 3: Queued for backend deletion")
                 }
                 

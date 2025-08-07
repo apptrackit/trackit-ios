@@ -1,42 +1,52 @@
 import Foundation
-import UIKit
 import BackgroundTasks
+import UIKit
 import os.log
 
-// MARK: - Background Sync Manager
-/// Handles background sync operations and app lifecycle events
+// MARK: - Background Sync Manager (Updated for compatibility)
 @MainActor
 class BackgroundSyncManager: ObservableObject {
     static let shared = BackgroundSyncManager()
     
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "BackgroundSync")
-    private let healthManager = NewHealthManager.shared
-    private let syncManager = NewSyncManager.shared
+    private let healthManager = HealthManager.shared
+    private let syncManager = MetricSyncManager.shared
     
-    // Background task identifiers
+    // Background task identifiers (must be registered in Info.plist)
     private let backgroundSyncTaskIdentifier = "com.lifetrackerx.sync"
     private let healthKitSyncTaskIdentifier = "com.lifetrackerx.healthkit-sync"
     
-    @Published var backgroundSyncStatus: String = "Idle"
+    @Published var backgroundSyncStatus: String = "Ready"
+    @Published var lastBackgroundSync: Date?
     
     private init() {
         registerBackgroundTasks()
         setupNotificationObservers()
     }
     
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
     // MARK: - Background Task Registration
     
     private func registerBackgroundTasks() {
-        // Register background app refresh task
+        // Register app refresh task for periodic sync
         BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundSyncTaskIdentifier, using: nil) { [weak self] task in
-            guard let self = self else { return }
-            self.handleBackgroundSync(task: task as! BGAppRefreshTask)
+            guard let bgTask = task as? BGAppRefreshTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            self?.handleBackgroundSync(task: bgTask)
         }
         
-        // Register background processing task for HealthKit sync
+        // Register processing task for heavy HealthKit sync
         BGTaskScheduler.shared.register(forTaskWithIdentifier: healthKitSyncTaskIdentifier, using: nil) { [weak self] task in
-            guard let self = self else { return }
-            self.handleHealthKitBackgroundSync(task: task as! BGProcessingTask)
+            guard let processTask = task as? BGProcessingTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            self?.handleHealthKitBackgroundSync(task: processTask)
         }
         
         logger.info("Background tasks registered")
@@ -66,271 +76,223 @@ class BackgroundSyncManager: ObservableObject {
             object: nil
         )
         
-        logger.info("App lifecycle observers setup")
+        logger.info("Notification observers set up")
     }
     
     // MARK: - App Lifecycle Handlers
     
     @objc private func appWillEnterForeground() {
-        logger.info("App entering foreground - performing sync")
-        backgroundSyncStatus = "Foreground sync"
+        logger.info("App entering foreground - starting sync")
+        backgroundSyncStatus = "Syncing on foreground..."
         
         Task {
-            // Check for HealthKit changes
-            if healthManager.isAuthorized {
-                await healthManager.forceSyncFromHealthKit()
-            }
+            // First, sync from HealthKit to get any new data
+            await healthManager.forceSyncFromHealthKit()
             
-            // Sync pending operations to backend
+            // Then process any pending backend operations
             await syncManager.processPendingOperations()
             
-            // Pull any updates from backend
+            // Finally, sync from backend to get updates from other devices
             await syncManager.syncFromBackend()
             
-            backgroundSyncStatus = "Idle"
+            backgroundSyncStatus = "Ready"
+            lastBackgroundSync = Date()
+            
+            logger.info("Foreground sync completed")
         }
     }
     
     @objc private func appDidEnterBackground() {
         logger.info("App entering background - scheduling background tasks")
+        
+        // Schedule background tasks for when app is backgrounded
         scheduleBackgroundTasks()
         
         // Perform a quick sync before going to background
         Task {
-            await performQuickBackgroundSync()
+            await performQuickSync()
         }
     }
     
     @objc private func appWillTerminate() {
-        logger.info("App terminating - performing final sync")
+        logger.info("App will terminate - performing final sync")
         
-        // Note: We have very limited time here, so only do critical operations
+        // Perform one last sync attempt
         Task {
-            await performQuickBackgroundSync()
+            await performQuickSync()
         }
     }
     
     // MARK: - Background Task Scheduling
     
     private func scheduleBackgroundTasks() {
-        scheduleBackgroundSync()
-        scheduleHealthKitSync()
-    }
-    
-    private func scheduleBackgroundSync() {
-        let request = BGAppRefreshTaskRequest(identifier: backgroundSyncTaskIdentifier)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60) // 15 minutes
+        // Schedule app refresh task for basic sync
+        let appRefreshRequest = BGAppRefreshTaskRequest(identifier: backgroundSyncTaskIdentifier)
+        appRefreshRequest.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60) // 15 minutes from now
         
         do {
-            try BGTaskScheduler.shared.submit(request)
-            logger.info("Scheduled background sync task")
+            try BGTaskScheduler.shared.submit(appRefreshRequest)
+            logger.info("Scheduled background app refresh task")
         } catch {
-            logger.error("Failed to schedule background sync: \(error.localizedDescription)")
+            logger.error("Failed to schedule app refresh task: \(error.localizedDescription)")
         }
-    }
-    
-    private func scheduleHealthKitSync() {
-        let request = BGProcessingTaskRequest(identifier: healthKitSyncTaskIdentifier)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60) // 30 minutes
-        request.requiresNetworkConnectivity = true
-        request.requiresExternalPower = false
         
-        do {
-            try BGTaskScheduler.shared.submit(request)
-            logger.info("Scheduled HealthKit sync task")
-        } catch {
-            logger.error("Failed to schedule HealthKit sync: \(error.localizedDescription)")
+        // Schedule processing task for HealthKit sync (only if authorized)
+        if healthManager.isAuthorized {
+            let processingRequest = BGProcessingTaskRequest(identifier: healthKitSyncTaskIdentifier)
+            processingRequest.requiresNetworkConnectivity = false // HealthKit works offline
+            processingRequest.requiresExternalPower = false
+            processingRequest.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60) // 30 minutes from now
+            
+            do {
+                try BGTaskScheduler.shared.submit(processingRequest)
+                logger.info("Scheduled background processing task")
+            } catch {
+                logger.error("Failed to schedule processing task: \(error.localizedDescription)")
+            }
         }
     }
     
     // MARK: - Background Task Handlers
     
     private func handleBackgroundSync(task: BGAppRefreshTask) {
-        logger.info("Starting background app refresh sync")
-        backgroundSyncStatus = "Background sync"
+        logger.info("Background app refresh task started")
         
-        // Schedule next background sync
-        scheduleBackgroundSync()
-        
+        // Set up timeout handler
         task.expirationHandler = {
-            self.logger.warning("Background sync task expired")
+            self.logger.warning("Background app refresh task expired")
             task.setTaskCompleted(success: false)
         }
         
+        // Perform the sync
         Task {
-            do {
-                // Sync pending operations (quick operations only)
-                await syncManager.processPendingOperations()
-                
-                backgroundSyncStatus = "Idle"
-                task.setTaskCompleted(success: true)
-                logger.info("Background sync completed successfully")
-                
-            } catch {
-                logger.error("Background sync failed: \(error.localizedDescription)")
-                backgroundSyncStatus = "Idle"
-                task.setTaskCompleted(success: false)
-            }
+            let success = await performBackgroundSync()
+            
+            // Schedule next background task
+            self.scheduleBackgroundTasks()
+            
+            task.setTaskCompleted(success: success)
+            self.logger.info("Background app refresh task completed: \(success)")
         }
     }
     
     private func handleHealthKitBackgroundSync(task: BGProcessingTask) {
-        logger.info("Starting background HealthKit sync")
-        backgroundSyncStatus = "Background HealthKit sync"
+        logger.info("Background HealthKit processing task started")
         
-        // Schedule next HealthKit sync
-        scheduleHealthKitSync()
-        
+        // Set up timeout handler
         task.expirationHandler = {
-            self.logger.warning("Background HealthKit sync task expired")
+            self.logger.warning("Background processing task expired")
             task.setTaskCompleted(success: false)
         }
         
+        // Perform HealthKit sync
         Task {
-            do {
-                // Sync from HealthKit
-                if healthManager.isAuthorized {
-                    await healthManager.forceSyncFromHealthKit()
-                }
-                
-                // Sync to backend
-                await syncManager.processPendingOperations()
-                
-                // Sync from backend
-                await syncManager.syncFromBackend()
-                
-                backgroundSyncStatus = "Idle"
-                task.setTaskCompleted(success: true)
-                logger.info("Background HealthKit sync completed successfully")
-                
-            } catch {
-                logger.error("Background HealthKit sync failed: \(error.localizedDescription)")
-                backgroundSyncStatus = "Idle"
-                task.setTaskCompleted(success: false)
-            }
+            let success = await performHealthKitBackgroundSync()
+            
+            // Schedule next background task
+            self.scheduleBackgroundTasks()
+            
+            task.setTaskCompleted(success: success)
+            self.logger.info("Background HealthKit processing task completed: \(success)")
         }
     }
     
-    // MARK: - Quick Sync Operations
+    // MARK: - Sync Operations
     
-    private func performQuickBackgroundSync() async {
-        logger.info("Performing quick background sync")
-        backgroundSyncStatus = "Quick sync"
+    private func performBackgroundSync() async -> Bool {
+        logger.info("Performing background sync")
         
-        // Only sync pending operations (don't pull from backend to save time/battery)
+        do {
+            // Quick sync of pending operations
+            await syncManager.processPendingOperations()
+            
+            // Update status
+            lastBackgroundSync = Date()
+            return true
+            
+        } catch {
+            logger.error("Background sync failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    private func performHealthKitBackgroundSync() async -> Bool {
+        logger.info("Performing HealthKit background sync")
+        
+        guard healthManager.isAuthorized else {
+            logger.warning("HealthKit not authorized for background sync")
+            return false
+        }
+        
+        do {
+            // Sync from HealthKit
+            await healthManager.forceSyncFromHealthKit()
+            
+            // Process any new data to backend
+            await syncManager.processPendingOperations()
+            
+            return true
+            
+        } catch {
+            logger.error("HealthKit background sync failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    private func performQuickSync() async {
+        logger.info("Performing quick sync")
+        
+        // Only sync pending operations quickly
         await syncManager.processPendingOperations()
         
-        backgroundSyncStatus = "Idle"
-        logger.info("Quick background sync completed")
+        logger.info("Quick sync completed")
     }
     
     // MARK: - Public Interface
     
-    /// Force trigger background sync (for testing or manual operation)
-    func triggerBackgroundSync() async {
-        logger.info("Manual background sync triggered")
-        backgroundSyncStatus = "Manual sync"
+    /// Call this method from your App delegate or main app setup
+    func setupBackgroundSync() {
+        logger.info("Background sync setup completed")
         
-        // Comprehensive sync
-        if healthManager.isAuthorized {
-            await healthManager.forceSyncFromHealthKit()
-        }
-        
-        await syncManager.processPendingOperations()
-        await syncManager.syncFromBackend()
-        
-        backgroundSyncStatus = "Idle"
-        logger.info("Manual background sync completed")
+        // Schedule initial background tasks if needed
+        scheduleBackgroundTasks()
     }
     
-    /// Get status of background operations
+    /// Handle sync notification from server (if using push notifications)
+    func handleSyncNotification(_ userInfo: [AnyHashable: Any]) async {
+        logger.info("Handling sync notification")
+        
+        // Perform sync based on notification
+        await syncManager.syncFromBackend()
+        await syncManager.processPendingOperations()
+        
+        logger.info("Sync notification handled")
+    }
+    
+    /// Force a manual background-style sync
+    func forceBackgroundSync() async {
+        backgroundSyncStatus = "Manual sync..."
+        
+        let success = await performBackgroundSync()
+        
+        backgroundSyncStatus = success ? "Sync completed" : "Sync failed"
+        
+        // Reset status after delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            self.backgroundSyncStatus = "Ready"
+        }
+    }
+    
+    /// Get background sync statistics
     func getBackgroundSyncStatus() -> String {
-        let pendingCount = syncManager.pendingSyncCount
-        let isOnline = syncManager.isOnline
-        let lastSync = syncManager.lastSyncDate
+        let lastSyncStr = lastBackgroundSync?.formatted() ?? "Never"
         
         return """
         🔄 Background Sync Status:
         • Status: \(backgroundSyncStatus)
-        • Network: \(isOnline ? "Online" : "Offline")
-        • Pending operations: \(pendingCount)
-        • Last sync: \(lastSync?.formatted() ?? "Never")
+        • Last background sync: \(lastSyncStr)
         • HealthKit authorized: \(healthManager.isAuthorized)
+        • Network online: \(syncManager.isOnline)
         """
-    }
-    
-    // MARK: - Configuration
-    
-    /// Configure sync intervals and behavior
-    func configureBackgroundSync(
-        quickSyncEnabled: Bool = true,
-        backgroundRefreshInterval: TimeInterval = 15 * 60, // 15 minutes
-        healthKitSyncInterval: TimeInterval = 30 * 60 // 30 minutes
-    ) {
-        logger.info("""
-        Configuring background sync:
-        • Quick sync: \(quickSyncEnabled)
-        • Background refresh: \(backgroundRefreshInterval/60) minutes
-        • HealthKit sync: \(healthKitSyncInterval/60) minutes
-        """)
-        
-        // This could store preferences and modify scheduling behavior
-    }
-    
-    // MARK: - Debug and Testing
-    
-    /// Test background sync functionality (for development)
-    func testBackgroundSync() async {
-        logger.info("Testing background sync functionality")
-        await triggerBackgroundSync()
-    }
-}
-
-// MARK: - App Integration Helper
-extension BackgroundSyncManager {
-    /// Call this from AppDelegate or App struct to initialize background sync
-    func setupBackgroundSync() {
-        logger.info("Initializing background sync manager")
-        
-        // Perform initial sync if needed
-        Task {
-            await triggerBackgroundSync()
-        }
-    }
-    
-    /// Handle background URL sessions (if needed for file uploads/downloads)
-    func handleBackgroundURLSession(
-        identifier: String,
-        completionHandler: @escaping () -> Void
-    ) {
-        logger.info("Handling background URL session: \(identifier)")
-        // Handle any background URL session tasks here
-        completionHandler()
-    }
-}
-
-// MARK: - Notification Extensions
-extension BackgroundSyncManager {
-    /// Handle push notification that might trigger sync
-    func handleSyncNotification(_ userInfo: [AnyHashable: Any]) async {
-        logger.info("Handling sync notification")
-        
-        if let syncType = userInfo["syncType"] as? String {
-            switch syncType {
-            case "healthkit":
-                if healthManager.isAuthorized {
-                    await healthManager.forceSyncFromHealthKit()
-                }
-            case "backend":
-                await syncManager.syncFromBackend()
-            case "full":
-                await triggerBackgroundSync()
-            default:
-                await syncManager.processPendingOperations()
-            }
-        } else {
-            // Default to processing pending operations
-            await syncManager.processPendingOperations()
-        }
     }
 }
