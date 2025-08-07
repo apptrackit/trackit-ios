@@ -41,13 +41,14 @@ class MetricSyncManager: ObservableObject {
     private func setupNetworkMonitoring() {
         networkMonitor = NWPathMonitor()
         networkMonitor?.pathUpdateHandler = { [weak self] path in
-            DispatchQueue.main.async {
-                let wasOnline = self?.isOnline ?? false
-                self?.isOnline = path.status == .satisfied
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                let wasOnline = self.isOnline
+                self.isOnline = path.status == .satisfied
                 
-                if !wasOnline && self?.isOnline == true {
-                    self?.logger.info("Network connection restored, starting sync")
-                    Task {
+                if !wasOnline && self.isOnline == true {
+                    self.logger.info("Network connection restored, starting sync")
+                    Task { @MainActor [weak self] in
                         await self?.performFullSync()
                     }
                 }
@@ -341,7 +342,7 @@ class MetricSyncManager: ObservableObject {
     private func processPendingOperations() async {
         guard !pendingOperations.isEmpty else { return }
         
-        logger.info("Processing \(pendingOperations.count) pending operations")
+        logger.info("Processing \(self.pendingOperations.count) pending operations")
         
         let operationsToProcess = pendingOperations
         pendingOperations.removeAll()
@@ -369,7 +370,7 @@ class MetricSyncManager: ObservableObject {
     }
     
     private func handleOperationFailure(_ operation: SyncOperation, error: Error) {
-        if operation.retryCount < maxRetryCount {
+        if operation.retryCount < self.maxRetryCount {
             let retryOperation = SyncOperation(
                 operationType: operation.operationType,
                 entry: operation.entry,
@@ -377,15 +378,15 @@ class MetricSyncManager: ObservableObject {
                 lastError: error.localizedDescription
             )
             queueOperation(retryOperation)
-            logger.info("Retrying operation (attempt \(retryOperation.retryCount)/\(maxRetryCount))")
+            logger.info("Retrying operation (attempt \(retryOperation.retryCount)/\(self.maxRetryCount))")
         } else {
-            logger.error("Operation failed after \(maxRetryCount) retries: \(operation.operationType.rawValue)")
+            logger.error("Operation failed after \(self.maxRetryCount) retries: \(operation.operationType.rawValue)")
         }
     }
     
     private func updatePendingCount() {
-        DispatchQueue.main.async {
-            self.pendingOperationsCount = self.pendingOperations.count
+        DispatchQueue.main.async { [weak self] in
+            self?.pendingOperationsCount = self?.pendingOperations.count ?? 0
         }
     }
     
@@ -405,7 +406,7 @@ class MetricSyncManager: ObservableObject {
         do {
             pendingOperations = try JSONDecoder().decode([SyncOperation].self, from: data)
             updatePendingCount()
-            logger.info("Loaded \(pendingOperations.count) pending operations")
+            logger.info("Loaded \(self.pendingOperations.count) pending operations")
         } catch {
             logger.error("Failed to load pending operations: \(error.localizedDescription)")
             pendingOperations = []
