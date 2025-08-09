@@ -31,7 +31,7 @@ class HealthManager: ObservableObject {
         HKObjectType.quantityType(forIdentifier: .waistCircumference)!
     ]
     
-    // Add a dictionary to track Apple Health sample UUIDs
+    // Add a dictionary to track Apple Health sample UUIDs (deprecated in favor of StatEntry.uuid)
     private var healthKitSampleMap: [UUID: String] = [:]
     
     init() {
@@ -394,7 +394,8 @@ class HealthManager: ObservableObject {
     
     // Function to get the HealthKit sample UUID for a StatEntry
     func getHealthKitSampleUUID(for entry: StatEntry) -> String? {
-        return healthKitSampleMap[entry.id]
+        // Prefer the persisted uuid stored on the entry
+        return entry.uuid ?? healthKitSampleMap[entry.id]
     }
     
     // Function to sync with HealthKit and handle deletions
@@ -431,46 +432,70 @@ class HealthManager: ObservableObject {
             }
             
             // Convert the sample to a StatEntry
-            let entry: StatEntry
+            var entry: StatEntry
             switch type {
             case .weight:
                 let weightInKg = sample.quantity.doubleValue(for: HKUnit.gramUnit(with: .kilo))
                 entry = StatEntry(
+                    id: UUID(),
+                    uuid: sample.uuid.uuidString,
                     date: sample.startDate,
                     value: weightInKg,
                     type: .weight,
-                    source: .appleHealth
+                    source: .appleHealth,
+                    lastUpdatedAt: sample.startDate,
+                    syncedWithHealth: true,
+                    syncedWithBackend: false,
+                    isDeleted: false
                 )
             case .height:
                 let heightInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
                 entry = StatEntry(
+                    id: UUID(),
+                    uuid: sample.uuid.uuidString,
                     date: sample.startDate,
                     value: heightInCm,
                     type: .height,
-                    source: .appleHealth
+                    source: .appleHealth,
+                    lastUpdatedAt: sample.startDate,
+                    syncedWithHealth: true,
+                    syncedWithBackend: false,
+                    isDeleted: false
                 )
             case .bodyFat:
                 let bodyFatDecimal = sample.quantity.doubleValue(for: HKUnit.percent())
                 let bodyFatPercentage = bodyFatDecimal * 100.0
                 entry = StatEntry(
+                    id: UUID(),
+                    uuid: sample.uuid.uuidString,
                     date: sample.startDate,
                     value: bodyFatPercentage,
                     type: .bodyFat,
-                    source: .appleHealth
+                    source: .appleHealth,
+                    lastUpdatedAt: sample.startDate,
+                    syncedWithHealth: true,
+                    syncedWithBackend: false,
+                    isDeleted: false
                 )
             case .waist:
                 let waistInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
                 entry = StatEntry(
+                    id: UUID(),
+                    uuid: sample.uuid.uuidString,
                     date: sample.startDate,
                     value: waistInCm,
                     type: .waist,
-                    source: .appleHealth
+                    source: .appleHealth,
+                    lastUpdatedAt: sample.startDate,
+                    syncedWithHealth: true,
+                    syncedWithBackend: false,
+                    isDeleted: false
                 )
             default:
                 continue
             }
             
-            // Store the HealthKit sample UUID
+            // Store the HealthKit sample UUID for backward compatibility
             healthKitSampleMap[entry.id] = sample.uuid.uuidString
             
             // Add or update the entry (this will automatically sync to backend)

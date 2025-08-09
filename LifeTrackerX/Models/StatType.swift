@@ -95,6 +95,54 @@ enum StatType: String, Codable, CaseIterable, Identifiable, CustomStringConverti
         }
     }
     
+    // Backend string mapping (mobile sync)
+    var backendName: String {
+        switch self {
+        case .weight: return "weight"
+        case .height: return "height"
+        case .bodyFat: return "body_fat"
+        case .waist: return "waist"
+        case .bicep: return "bicep"
+        case .chest: return "chest"
+        case .thigh: return "thigh"
+        case .shoulder: return "shoulder"
+        case .glutes: return "glutes"
+        case .calf: return "calf"
+        case .neck: return "neck"
+        case .forearm: return "forearm"
+        case .bmi: return "bmi"
+        case .lbm: return "lbm"
+        case .fm: return "fm"
+        case .ffmi: return "ffmi"
+        case .bmr: return "bmr"
+        case .bsa: return "bsa"
+        }
+    }
+    
+    static func fromBackendName(_ name: String) -> StatType? {
+        switch name.lowercased() {
+        case "weight": return .weight
+        case "height": return .height
+        case "body_fat", "bodyfat": return .bodyFat
+        case "waist": return .waist
+        case "bicep": return .bicep
+        case "chest": return .chest
+        case "thigh": return .thigh
+        case "shoulder": return .shoulder
+        case "glutes": return .glutes
+        case "calf": return .calf
+        case "neck": return .neck
+        case "forearm": return .forearm
+        case "bmi": return .bmi
+        case "lbm": return .lbm
+        case "fm": return .fm
+        case "ffmi": return .ffmi
+        case "bmr": return .bmr
+        case "bsa": return .bsa
+        default: return nil
+        }
+    }
+    
     var description: String {
         return self.rawValue
     }
