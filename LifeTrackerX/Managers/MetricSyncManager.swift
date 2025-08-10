@@ -66,7 +66,9 @@ class MetricSyncManager: ObservableObject {
             existing.statType == operation.statType &&
             existing.date == operation.date &&
             existing.value == operation.value &&
-            existing.isAppleHealth == operation.isAppleHealth
+            existing.isAppleHealth == operation.isAppleHealth &&
+            existing.uuid == operation.uuid &&
+            existing.isDeleted == operation.isDeleted
         }
         
         if isDuplicate {
@@ -142,6 +144,24 @@ class MetricSyncManager: ObservableObject {
     }
     
     private func entryExistsOnBackend(_ operation: SyncOperation) async -> Bool {
+        // Prefer v2 lookup by UUID if available
+        if let uuid = operation.uuid {
+            do {
+                let path = "/api/metrics?id=\(uuid)"
+                let (data, response) = try await networkManager.makeAuthenticatedRawRequest(path, method: "GET")
+                if (200...299).contains(response.statusCode) {
+                    // If any entries are returned, it exists
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let entries = json["entries"] as? [Any] {
+                        return !entries.isEmpty
+                    }
+                }
+            } catch {
+                logger.error("V2 existence check failed: \(error.localizedDescription)")
+            }
+        }
+        
+        // Legacy fallback
         do {
             let response: MetricsListResponse = try await networkManager.makeAuthenticatedRequest(
                 "/api/metrics",
@@ -173,7 +193,13 @@ class MetricSyncManager: ObservableObject {
                     value: operation.value,
                     type: operation.statType,
                     source: operation.isAppleHealth ? .appleHealth : .manual,
-                    backendId: operation.backendId
+                    backendId: operation.backendId,
+                    uuid: operation.uuid,
+                    lastUpdatedAt: operation.clientLastUpdatedAt,
+                    syncedWithHealth: false,
+                    syncedWithBackend: false,
+                    isDeleted: operation.isDeleted,
+                    unit: operation.unit
                 ),
                 retryCount: operation.retryCount + 1
             )
@@ -188,8 +214,31 @@ class MetricSyncManager: ObservableObject {
         }
     }
     
-    // MARK: - API Operations
+    // MARK: - API Operations (V2 preferred with legacy fallback)
     private func createMetric(_ operation: SyncOperation) async throws {
+        // Prefer v2 payload
+        let v2 = CreateMetricV2Request(
+            id: operation.uuid,
+            metric_type: operation.statType.rawValue,
+            metric_type_id: BackendMetricType.from(operation.statType)?.rawValue,
+            value: operation.value,
+            unit: operation.unit,
+            timestamp: DateCoding.iso8601.string(from: operation.date),
+            date: nil,
+            source: operation.isAppleHealth ? "apple_health" : "app"
+        )
+        let v2Data = try JSONEncoder().encode(v2)
+        do {
+            let (data, response) = try await networkManager.makeAuthenticatedRawRequest("/api/metrics", method: "POST", body: v2Data)
+            guard (200...299).contains(response.statusCode) else { throw AuthError.unknown }
+            // Success
+            logger.info("Successfully created metric (v2): \(operation.statType.rawValue)")
+            return
+        } catch {
+            logger.error("Create v2 failed, falling back to legacy: \(error.localizedDescription)")
+        }
+        
+        // Legacy fallback
         let entry = StatEntry(
             id: operation.entryId,
             date: operation.date,
@@ -197,69 +246,94 @@ class MetricSyncManager: ObservableObject {
             type: operation.statType,
             source: operation.isAppleHealth ? .appleHealth : .manual
         )
-        
         let request = CreateMetricRequest(entry: entry)
         let requestData = try JSONEncoder().encode(request)
-        
         let response: MetricResponse = try await networkManager.makeAuthenticatedRequest(
             "/api/metrics",
             method: "POST",
             body: requestData
         )
-        
         if !response.success {
-            throw NSError(domain: "MetricSync", code: -1, userInfo: [
-                NSLocalizedDescriptionKey: response.error ?? "Unknown error"
-            ])
-        }
-        
-        logger.info("Successfully created metric: \(operation.statType.rawValue)")
+            throw NSError(domain: "MetricSync", code: -1, userInfo: [NSLocalizedDescriptionKey: response.error ?? "Unknown error"]) }
+        logger.info("Successfully created metric (legacy): \(operation.statType.rawValue)")
     }
     
     private func updateMetric(_ operation: SyncOperation) async throws {
+        // Prefer v2 update using UUID if available
+        if let uuid = operation.uuid {
+            let v2 = UpdateMetricV2Request(
+                value: operation.value,
+                unit: operation.unit,
+                timestamp: DateCoding.iso8601.string(from: operation.date),
+                source: operation.isAppleHealth ? "apple_health" : "app",
+                client_last_updated_at: DateCoding.iso8601.string(from: operation.clientLastUpdatedAt)
+            )
+            let v2Data = try JSONEncoder().encode(v2)
+            do {
+                let path = "/api/metrics/\(uuid)"
+                let (_, response) = try await networkManager.makeAuthenticatedRawRequest(path, method: "PUT", body: v2Data)
+                switch response.statusCode {
+                case 200...299:
+                    logger.info("Successfully updated metric (v2): \(operation.statType.rawValue)")
+                    return
+                case 409, 410:
+                    // Conflict or Gone - pull changes then treat as success
+                    await StatsHistoryManager.shared.loadMetricsFromServer()
+                    logger.info("Resolved conflict/gone by syncing from server for: \(operation.statType.rawValue)")
+                    return
+                default:
+                    throw AuthError.unknown
+                }
+            } catch {
+                logger.error("Update v2 failed, falling back to legacy: \(error.localizedDescription)")
+            }
+        }
+        
+        // Legacy fallback by backend ID or UUID
         let entry = StatEntry(
             id: operation.entryId,
             date: operation.date,
             value: operation.value,
             type: operation.statType,
-            source: operation.isAppleHealth ? .appleHealth : .manual
+            source: operation.isAppleHealth ? .appleHealth : .manual,
+            backendId: operation.backendId
         )
-        
         let request = UpdateMetricRequest(entry: entry)
         let requestData = try JSONEncoder().encode(request)
-        
-        // Use backend ID if available, otherwise use UUID
         let identifier = entry.backendId?.description ?? operation.entryId.uuidString
         let response: MetricResponse = try await networkManager.makeAuthenticatedRequest(
             "/api/metrics/\(identifier)",
             method: "PUT",
             body: requestData
         )
-        
         if !response.success {
-            throw NSError(domain: "MetricSync", code: -1, userInfo: [
-                NSLocalizedDescriptionKey: response.error ?? "Unknown error"
-            ])
-        }
-        
-        logger.info("Successfully updated metric: \(operation.statType.rawValue)")
+            throw NSError(domain: "MetricSync", code: -1, userInfo: [NSLocalizedDescriptionKey: response.error ?? "Unknown error"]) }
+        logger.info("Successfully updated metric (legacy): \(operation.statType.rawValue)")
     }
     
     private func deleteMetric(_ operation: SyncOperation) async throws {
-        // Use backend ID if available, otherwise use UUID
+        // Prefer v2 soft delete by UUID
+        if let uuid = operation.uuid {
+            do {
+                let path = "/api/metrics/\(uuid)"
+                let (_, response) = try await networkManager.makeAuthenticatedRawRequest(path, method: "DELETE", body: nil)
+                guard (200...299).contains(response.statusCode) else { throw AuthError.unknown }
+                logger.info("Successfully deleted metric (v2 soft): \(operation.statType.rawValue)")
+                return
+            } catch {
+                logger.error("Delete v2 failed, falling back to legacy: \(error.localizedDescription)")
+            }
+        }
+        
+        // Legacy fallback by backend ID or UUID
         let identifier = operation.backendId?.description ?? operation.entryId.uuidString
         let response: MetricResponse = try await networkManager.makeAuthenticatedRequest(
             "/api/metrics/\(identifier)",
             method: "DELETE"
         )
-        
         if !response.success {
-            throw NSError(domain: "MetricSync", code: -1, userInfo: [
-                NSLocalizedDescriptionKey: response.error ?? "Unknown error"
-            ])
-        }
-        
-        logger.info("Successfully deleted metric: \(operation.statType.rawValue)")
+            throw NSError(domain: "MetricSync", code: -1, userInfo: [NSLocalizedDescriptionKey: response.error ?? "Unknown error"]) }
+        logger.info("Successfully deleted metric (legacy): \(operation.statType.rawValue)")
     }
     
     // MARK: - Public Interface
@@ -320,7 +394,7 @@ class MetricSyncManager: ObservableObject {
         return pendingOperations
     }
     
-    // MARK: - Data Fetching
+    // MARK: - Data Fetching (Legacy list for initial load)
     func fetchUserMetrics() async throws -> [StatEntry] {
         logger.info("Fetching user metrics from server")
         
@@ -336,9 +410,10 @@ class MetricSyncManager: ObservableObject {
         }
         
         let entries = response.entries.map { metric in
-            StatEntry(
+            let parsedDate = Self.isoDateFormatter.date(from: metric.date) ?? Self.dateOnlyFormatter.date(from: metric.date) ?? Date()
+            return StatEntry(
                 id: UUID(), // Generate new UUID for local storage
-                date: Self.dateFormatter.date(from: metric.date) ?? Date(),
+                date: parsedDate,
                 value: Double(metric.value) ?? 0.0, // Convert string to Double
                 type: BackendMetricType(rawValue: metric.metric_type_id)?.toStatType() ?? .weight,
                 source: metric.is_apple_health ? .appleHealth : .manual,
@@ -350,9 +425,16 @@ class MetricSyncManager: ObservableObject {
         return entries
     }
     
-    private static let dateFormatter: DateFormatter = {
+    private static let isoDateFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        f.timeZone = TimeZone(abbreviation: "UTC")
+        return f
+    }()
+    
+    private static let dateOnlyFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+        formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = TimeZone(abbreviation: "UTC")
         return formatter
     }()

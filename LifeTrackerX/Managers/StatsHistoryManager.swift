@@ -9,6 +9,7 @@ class StatsHistoryManager: ObservableObject {
     // Add a refresh trigger to force view updates
     @Published var refreshTrigger: UUID = UUID()
     private let saveKey = "StatsHistory"
+    private let lastSyncKey = "MetricsLastServerSyncTimestamp"
     
     // Flag to track if Apple Health entries have been synced to backend
     private var appleHealthEntriesSynced = false
@@ -32,6 +33,26 @@ class StatsHistoryManager: ObservableObject {
         }
     }
     
+    // Last server sync timestamp for incremental sync
+    var lastServerSyncTimestamp: Date? {
+        get {
+            if let isoString = UserDefaults.standard.string(forKey: lastSyncKey) {
+                if let date = DateCoding.iso8601.date(from: isoString) ?? DateCoding.iso8601NoFraction.date(from: isoString) {
+                    return date
+                }
+            }
+            return nil
+        }
+        set {
+            if let newValue = newValue {
+                let iso = DateCoding.iso8601.string(from: newValue)
+                UserDefaults.standard.set(iso, forKey: lastSyncKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: lastSyncKey)
+            }
+        }
+    }
+    
     // Function to sync all manual entries to Apple Health
     func syncManualEntriesToHealthKit() {
         guard healthManager.isWriteAuthorized else { 
@@ -42,7 +63,7 @@ class StatsHistoryManager: ObservableObject {
         print("📤 Starting sync of all manual entries to Apple Health")
         
         // Get all manual entries that aren't BMI (since BMI is calculated)
-        let manualEntries = entries.filter { $0.source == .manual && $0.type != .bmi }
+        let manualEntries = entries.filter { $0.source == .manual && $0.type != .bmi && !$0.isDeleted }
         print("📤 Found \(manualEntries.count) manual entries to sync")
         
         for entry in manualEntries {
@@ -67,7 +88,7 @@ class StatsHistoryManager: ObservableObject {
         print("📤 Starting sync of Apple Health entries to backend")
         
         // Get all Apple Health entries that aren't calculated
-        let appleHealthEntries = entries.filter { $0.source == .appleHealth && !$0.type.isCalculated }
+        let appleHealthEntries = entries.filter { $0.source == .appleHealth && !$0.type.isCalculated && !$0.isDeleted }
         print("📤 Found \(appleHealthEntries.count) Apple Health entries to sync to backend")
         
         for entry in appleHealthEntries {
@@ -85,7 +106,7 @@ class StatsHistoryManager: ObservableObject {
         print("📤 Starting sync of all entries to backend database")
         
         // Get all non-calculated entries
-        let entriesToSync = entries.filter { !$0.type.isCalculated }
+        let entriesToSync = entries.filter { !$0.type.isCalculated && !$0.isDeleted }
         print("📤 Found \(entriesToSync.count) entries to sync to backend")
         
         Task { @MainActor in
@@ -103,9 +124,9 @@ class StatsHistoryManager: ObservableObject {
         print("🔄 Recalculating all derived values...")
         
         // Get all entries sorted by date
-        let weightEntries = entries.filter { $0.type == .weight }.sorted { $0.date < $1.date }
-        let heightEntries = entries.filter { $0.type == .height }.sorted { $0.date < $1.date }
-        let bodyFatEntries = entries.filter { $0.type == .bodyFat }.sorted { $0.date < $1.date }
+        let weightEntries = entries.filter { $0.type == .weight && !$0.isDeleted }.sorted { $0.date < $1.date }
+        let heightEntries = entries.filter { $0.type == .height && !$0.isDeleted }.sorted { $0.date < $1.date }
+        let bodyFatEntries = entries.filter { $0.type == .bodyFat && !$0.isDeleted }.sorted { $0.date < $1.date }
         
         // Remove all existing calculated entries
         entries.removeAll { $0.type.isCalculated }
@@ -194,18 +215,23 @@ class StatsHistoryManager: ObservableObject {
             return
         }
         
+        var newEntry = entry
+        newEntry.lastUpdatedAt = Date()
+        newEntry.syncedWithBackend = false
+        
         // Only replace if the entry has the same date, type and source
         if let index = entries.firstIndex(where: {
-            Calendar.current.isDate($0.date, inSameDayAs: entry.date) &&
-            $0.type == entry.type &&
-            $0.source == entry.source
+            Calendar.current.isDate($0.date, inSameDayAs: newEntry.date) &&
+            $0.type == newEntry.type &&
+            $0.source == newEntry.source &&
+            !$0.isDeleted
         }) {
-            entries[index] = entry
+            entries[index] = newEntry
         } else {
-            entries.append(entry)
+            entries.append(newEntry)
             
             // If this is a new Apple Health entry, reset the sync flag
-            if entry.source == .appleHealth {
+            if newEntry.source == .appleHealth {
                 appleHealthEntriesSynced = false
             }
         }
@@ -214,26 +240,26 @@ class StatsHistoryManager: ObservableObject {
         entries.sort { $0.date > $1.date }
         
         // If this is a weight, height, or body fat entry, recalculate all derived values
-        if entry.type == .weight || entry.type == .height || entry.type == .bodyFat {
+        if newEntry.type == .weight || newEntry.type == .height || newEntry.type == .bodyFat {
             recalculateAllDerivedValues()
         } else {
             saveEntries()
         }
         
         // Sync to backend database (for all non-calculated metrics, but not Apple Health entries during import)
-        if !entry.type.isCalculated && entry.source != .appleHealth {
-            print("📤 Syncing entry to backend: \(entry.type)")
+        if !newEntry.type.isCalculated && newEntry.source != .appleHealth && !newEntry.isDeleted {
+            print("📤 Syncing entry to backend: \(newEntry.type)")
             Task { @MainActor in
-                metricSyncManager.syncEntry(entry, operation: .create)
+                metricSyncManager.syncEntry(newEntry, operation: .create)
             }
         }
         
         // If this is a manual entry and not from Apple Health, sync to HealthKit
-        if entry.source == .manual && !entry.type.isCalculated {
+        if newEntry.source == .manual && !newEntry.type.isCalculated {
             if healthManager.isWriteAuthorized {
-                healthManager.saveToHealthKit(entry) { success, error in
+                healthManager.saveToHealthKit(newEntry) { success, error in
                     if success {
-                        print("✅ Synced \(entry.type) to Apple Health")
+                        print("✅ Synced \(newEntry.type) to Apple Health")
                     } else if let error = error {
                         print("❌ Error syncing to Apple Health: \(error.localizedDescription)")
                     }
@@ -255,11 +281,13 @@ class StatsHistoryManager: ObservableObject {
 
         var hasAppleHealthEntries = false
         
-        for entry in newEntries {
+        for var entry in newEntries {
+            // Ensure sync metadata exists
+            entry.lastUpdatedAt = entry.lastUpdatedAt
+            
             if let index = entries.firstIndex(where: {
-                Calendar.current.isDate($0.date, inSameDayAs: entry.date) &&
-                $0.type == entry.type &&
-                $0.source == entry.source
+                ($0.uuid != nil && $0.uuid == entry.uuid) ||
+                (Calendar.current.isDate($0.date, inSameDayAs: entry.date) && $0.type == entry.type && $0.source == entry.source)
             }) {
                 entries[index] = entry
             } else {
@@ -290,32 +318,34 @@ class StatsHistoryManager: ObservableObject {
             return
         }
         
-        entries.removeAll { $0.id == entry.id }
-        
-        // Sync to backend database (for all non-calculated metrics)
-        if !entry.type.isCalculated {
-            print("📤 Syncing deleted entry to backend: \(entry.type)")
-            Task { @MainActor in
-                metricSyncManager.syncEntry(entry, operation: .delete)
-            }
-        }
-        
-        // If this is a weight or height entry, recalculate BMI entries
-        if entry.type == .weight || entry.type == .height {
-            recalculateAllDerivedValues()
-        }
-        
-        // If this was a manual entry, also delete from HealthKit
-        if entry.source == .manual && healthManager.isWriteAuthorized {
-            healthManager.deleteFromHealthKit(entry) { success, error in
-                if success {
-                    print("Successfully deleted \(entry.type) from Apple Health")
-                } else if let error = error {
-                    print("Error deleting from Apple Health: \(error.localizedDescription)")
+        // Soft delete: mark as deleted but keep for sync
+        if let index = entries.firstIndex(where: { $0.id == entry.id }) {
+            entries[index].isDeleted = true
+            entries[index].lastUpdatedAt = Date()
+            entries[index].syncedWithBackend = false
+            
+            let deletedEntry = entries[index]
+            
+            // Sync to backend database (for all non-calculated metrics)
+            if !deletedEntry.type.isCalculated {
+                print("📤 Syncing deleted entry to backend: \(deletedEntry.type)")
+                Task { @MainActor in
+                    metricSyncManager.syncEntry(deletedEntry, operation: .delete)
                 }
             }
-        } else if entry.source == .manual && !healthManager.isWriteAuthorized {
-            print("⚠️ Cannot delete from HealthKit - write access not available")
+            
+            // If this was a manual entry that we previously wrote to HealthKit, attempt to delete it there
+            if deletedEntry.source == .manual && healthManager.isWriteAuthorized && deletedEntry.syncedWithHealth {
+                healthManager.deleteFromHealthKit(deletedEntry) { success, error in
+                    if success {
+                        print("Successfully deleted \(deletedEntry.type) from Apple Health")
+                    } else if let error = error {
+                        print("Error deleting from Apple Health: \(error.localizedDescription)")
+                    }
+                }
+            } else if deletedEntry.source == .manual && !healthManager.isWriteAuthorized {
+                print("⚠️ Cannot delete from HealthKit - write access not available")
+            }
         }
         
         saveEntries()
@@ -333,19 +363,30 @@ class StatsHistoryManager: ObservableObject {
         print("📝 Updating entry: type=\(entry.type), source=\(entry.source), value=\(entry.value)")
         
         if let index = entries.firstIndex(where: { $0.id == entry.id }) {
+            var updatedEntry = entry
+            updatedEntry.lastUpdatedAt = Date()
+            updatedEntry.syncedWithBackend = false
+            
             let oldEntry = entries[index]
-            entries[index] = entry
+            entries[index] = updatedEntry
             
             // Sync to backend database (for all non-calculated metrics)
-            if !entry.type.isCalculated {
-                print("📤 Syncing updated entry to backend: \(entry.type)")
-                Task { @MainActor in
-                    metricSyncManager.syncEntry(entry, operation: .update)
+            if !updatedEntry.type.isCalculated {
+                if updatedEntry.isDeleted {
+                    print("📤 Syncing soft-deleted entry to backend: \(updatedEntry.type)")
+                    Task { @MainActor in
+                        metricSyncManager.syncEntry(updatedEntry, operation: .delete)
+                    }
+                } else {
+                    print("📤 Syncing updated entry to backend: \(updatedEntry.type)")
+                    Task { @MainActor in
+                        metricSyncManager.syncEntry(updatedEntry, operation: .update)
+                    }
                 }
             }
             
             // If this is a manual entry and we're authorized, update in HealthKit
-            if oldEntry.source == .manual && entry.type != .bmi && healthManager.isWriteAuthorized {
+            if oldEntry.source == .manual && updatedEntry.type != .bmi && healthManager.isWriteAuthorized {
                 print("📤 Syncing updated entry to Apple Health")
                 
                 // First delete the old entry from HealthKit
@@ -353,7 +394,7 @@ class StatsHistoryManager: ObservableObject {
                     if success {
                         print("✅ Successfully deleted old entry from Apple Health")
                         // Then save the new entry to HealthKit
-                        self.healthManager.saveToHealthKit(entry) { success, error in
+                        self.healthManager.saveToHealthKit(updatedEntry) { success, error in
                             if success {
                                 print("✅ Successfully saved updated entry to Apple Health")
                             } else if let error = error {
@@ -367,7 +408,7 @@ class StatsHistoryManager: ObservableObject {
             }
             
             // If this is a weight or height entry, recalculate BMI entries
-            if entry.type == .weight || entry.type == .height {
+            if updatedEntry.type == .weight || updatedEntry.type == .height {
                 recalculateAllDerivedValues()
             }
             
@@ -377,7 +418,7 @@ class StatsHistoryManager: ObservableObject {
     }
     
     func getLatestValue(for type: StatType) -> Double? {
-        let typeEntries = entries.filter { $0.type == type }
+        let typeEntries = entries.filter { $0.type == type && !$0.isDeleted }
         if let latest = typeEntries.sorted(by: { $0.date > $1.date }).first {
             return latest.value
         }
@@ -385,11 +426,11 @@ class StatsHistoryManager: ObservableObject {
     }
     
     func getEntries(for type: StatType) -> [StatEntry] {
-        return entries.filter { $0.type == type }.sorted(by: { $0.date > $1.date })
+        return entries.filter { $0.type == type && !$0.isDeleted }.sorted(by: { $0.date > $1.date })
     }
     
     func getEntries(for type: StatType, source: StatSource) -> [StatEntry] {
-        return entries.filter { $0.type == type && $0.source == source }.sorted(by: { $0.date > $1.date })
+        return entries.filter { $0.type == type && $0.source == source && !$0.isDeleted }.sorted(by: { $0.date > $1.date })
     }
     
     func getEntriesAt(date: Date) -> [StatEntry] {
@@ -399,7 +440,7 @@ class StatsHistoryManager: ObservableObject {
         
         for type in relevantTypes {
             // Find the most recent entry for this type on or before the given date
-            if let latestEntry = entries.filter({ $0.type == type && $0.date <= date })
+            if let latestEntry = entries.filter({ $0.type == type && $0.date <= date && !$0.isDeleted })
                 .sorted(by: { $0.date > $1.date })
                 .first {
                 result.append(latestEntry)
@@ -421,10 +462,10 @@ class StatsHistoryManager: ObservableObject {
            let decoded = try? JSONDecoder().decode([StatEntry].self, from: data) {
             entries = decoded
             print("📱 Loaded \(entries.count) total entries")
-            print("📱 Weight entries: \(entries.filter { $0.type == .weight }.count)")
-            print("📱 Height entries: \(entries.filter { $0.type == .height }.count)")
-            print("📱 BMI entries: \(entries.filter { $0.type == .bmi }.count)")
-            print("📱 Body Fat entries: \(entries.filter { $0.type == .bodyFat }.count)")
+            print("📱 Weight entries: \(entries.filter { $0.type == .weight && !$0.isDeleted }.count)")
+            print("📱 Height entries: \(entries.filter { $0.type == .height && !$0.isDeleted }.count)")
+            print("📱 BMI entries: \(entries.filter { $0.type == .bmi && !$0.isDeleted }.count)")
+            print("📱 Body Fat entries: \(entries.filter { $0.type == .bodyFat && !$0.isDeleted }.count)")
             
             // Recalculate BMI entries when loading data
             recalculateAllDerivedValues()
@@ -460,28 +501,126 @@ class StatsHistoryManager: ObservableObject {
         print("📱 Loading metrics from server...")
         
         do {
-            let serverEntries = try await MetricSyncManager.shared.fetchUserMetrics()
-            
-            // Update UI on main thread
-            await MainActor.run {
-                // Clear existing entries and add server entries
-                entries = serverEntries
+            if let since = lastServerSyncTimestamp {
+                let sinceParam = DateCoding.iso8601.string(from: since)
+                let url = "/api/metrics/sync/changes?since_timestamp=\(sinceParam)"
+                let (data, httpResponse) = try await NetworkManager.shared.makeAuthenticatedRawRequest(url, method: "GET")
+                guard (200...299).contains(httpResponse.statusCode) else {
+                    throw AuthError.unknown
+                }
+                let decoder = JSONDecoder()
+                let response = try decoder.decode(SyncChangesResponseV2.self, from: data)
                 
-                // Recalculate BMI entries
-                recalculateAllDerivedValues()
-                
-                // Save to local storage
-                saveEntries()
-                
-                // Trigger UI update
-                triggerUpdate()
+                await MainActor.run {
+                    for dto in response.entries {
+                        applyServerChange(dto)
+                    }
+                    // Save and update last sync time
+                    saveEntries()
+                    if let serverTime = DateCoding.iso8601.date(from: response.server_timestamp) ?? DateCoding.iso8601NoFraction.date(from: response.server_timestamp) {
+                        lastServerSyncTimestamp = serverTime
+                    }
+                    triggerUpdate()
+                }
+                print("📱 Successfully merged \(response.entries.count) changes from server")
+            } else {
+                // Fallback initial load using legacy endpoint
+                let serverEntries = try await MetricSyncManager.shared.fetchUserMetrics()
+                await MainActor.run {
+                    entries = serverEntries
+                    recalculateAllDerivedValues()
+                    saveEntries()
+                    triggerUpdate()
+                }
+                print("📱 Successfully loaded \(serverEntries.count) metrics from server")
             }
-            
-            print("📱 Successfully loaded \(serverEntries.count) metrics from server")
         } catch {
             print("❌ Failed to load metrics from server: \(error.localizedDescription)")
-            // Don't throw error - just log it and continue with empty data
-            // This allows the app to work even if the endpoint doesn't exist yet
+            // Don't throw error - just log it and continue with existing data
         }
+    }
+    
+    // Merge strategy per mobile sync rules
+    private func applyServerChange(_ dto: MobileMetricEntryDTO) {
+        // Map DTO to StatEntry
+        let metricTypeName = dto.metric_type?.lowercased()
+        let statType: StatType = {
+            if let id = dto.metric_type_id, let backendType = BackendMetricType(rawValue: id) { return backendType.toStatType() }
+            switch metricTypeName {
+            case "weight": return .weight
+            case "height": return .height
+            case "body_fat": return .bodyFat
+            case "waist": return .waist
+            case "bicep": return .bicep
+            case "chest": return .chest
+            case "thigh": return .thigh
+            case "shoulder": return .shoulder
+            case "glutes": return .glutes
+            case "calf": return .calf
+            case "neck": return .neck
+            case "forearm": return .forearm
+            default: return .weight
+            }
+        }()
+        
+        let source: StatSource = (dto.source == "apple_health") ? .appleHealth : .manual
+        
+        let timestampString = dto.timestamp ?? dto.date
+        let date: Date = {
+            if let ts = timestampString {
+                return DateCoding.iso8601.date(from: ts) ?? DateCoding.iso8601NoFraction.date(from: ts) ?? Date()
+            }
+            if let d = dto.date {
+                let fmt = DateFormatter()
+                fmt.dateFormat = "yyyy-MM-dd"
+                return fmt.date(from: d) ?? Date()
+            }
+            return Date()
+        }()
+        
+        let serverUpdatedAt: Date = {
+            if let lu = dto.last_updated_at {
+                return DateCoding.iso8601.date(from: lu) ?? DateCoding.iso8601NoFraction.date(from: lu) ?? Date()
+            }
+            return Date()
+        }()
+        
+        let isDeleted = dto.is_deleted ?? false
+        
+        // Find local entry by UUID or date/type/source
+        if let index = entries.firstIndex(where: { ($0.uuid == dto.id) || (Calendar.current.isDate($0.date, inSameDayAs: date) && $0.type == statType && $0.source == source) }) {
+            var local = entries[index]
+            // Conflict resolution: server wins if newer
+            if serverUpdatedAt > local.lastUpdatedAt || local.isDeleted {
+                local.value = dto.value
+                local.unit = dto.unit ?? local.unit
+                local.date = date
+                local.uuid = dto.id
+                local.lastUpdatedAt = serverUpdatedAt
+                local.isDeleted = isDeleted
+                local.syncedWithBackend = true
+                entries[index] = local
+            }
+        } else {
+            // New entry from server
+            var entry = StatEntry(
+                id: UUID(),
+                date: date,
+                value: dto.value,
+                type: statType,
+                source: source,
+                backendId: nil,
+                uuid: dto.id,
+                lastUpdatedAt: serverUpdatedAt,
+                syncedWithHealth: source == .appleHealth,
+                syncedWithBackend: true,
+                isDeleted: isDeleted,
+                unit: dto.unit
+            )
+            entries.append(entry)
+        }
+        
+        // Maintain calculated values after merging
+        // (We will recalculate at the end of batch in caller)
     }
 }

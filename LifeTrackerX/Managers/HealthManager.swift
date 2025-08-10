@@ -428,18 +428,19 @@ class HealthManager: ObservableObject {
         // Create a set of sample UUIDs from HealthKit
         let currentSampleUUIDs = Set(samples.map { $0.uuid.uuidString })
         
-        // Find entries that need to be deleted (exist in our app but not in HealthKit)
-        let entriesToDelete = existingEntries.filter { entry in
+        // Mark entries that no longer exist in HealthKit as deleted instead of removing
+        let entriesToMarkDeleted = existingEntries.filter { entry in
             if let sampleUUID = getHealthKitSampleUUID(for: entry) {
                 return !currentSampleUUIDs.contains(sampleUUID)
             }
-            return true // If we don't have a sample UUID, delete it
+            return true // If we don't have a sample UUID, mark as deleted
         }
         
-        // Delete entries that no longer exist in HealthKit
-        for entry in entriesToDelete {
-            print("🗑️ Deleting entry that no longer exists in HealthKit: \(entry.type) from \(entry.date)")
-            historyManager.removeEntry(entry)
+        for entry in entriesToMarkDeleted {
+            var softDeleted = entry
+            softDeleted.isDeleted = true
+            softDeleted.lastUpdatedAt = Date()
+            historyManager.updateEntry(softDeleted)
         }
         
         // Add or update entries from HealthKit
@@ -455,29 +456,28 @@ class HealthManager: ObservableObject {
                 continue
             }
             
-            let entry: StatEntry
+            var entry: StatEntry
             switch type {
             case .weight:
                 let weightInKg = sample.quantity.doubleValue(for: HKUnit.gramUnit(with: .kilo))
-                entry = StatEntry(date: sample.startDate, value: weightInKg, type: .weight, source: .appleHealth)
+                entry = StatEntry(date: sample.startDate, value: weightInKg, type: .weight, source: .appleHealth, uuid: sample.uuid.uuidString, lastUpdatedAt: sample.endDate)
             case .height:
                 let heightInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
-                entry = StatEntry(date: sample.startDate, value: heightInCm, type: .height, source: .appleHealth)
+                entry = StatEntry(date: sample.startDate, value: heightInCm, type: .height, source: .appleHealth, uuid: sample.uuid.uuidString, lastUpdatedAt: sample.endDate)
             case .bodyFat:
                 let bodyFatDecimal = sample.quantity.doubleValue(for: HKUnit.percent())
                 let bodyFatPercentage = bodyFatDecimal * 100.0
-                entry = StatEntry(date: sample.startDate, value: bodyFatPercentage, type: .bodyFat, source: .appleHealth)
+                entry = StatEntry(date: sample.startDate, value: bodyFatPercentage, type: .bodyFat, source: .appleHealth, uuid: sample.uuid.uuidString, lastUpdatedAt: sample.endDate)
             case .waist:
                 let waistInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
-                entry = StatEntry(date: sample.startDate, value: waistInCm, type: .waist, source: .appleHealth)
+                entry = StatEntry(date: sample.startDate, value: waistInCm, type: .waist, source: .appleHealth, uuid: sample.uuid.uuidString, lastUpdatedAt: sample.endDate)
             default:
                 continue
             }
             
             let existingEntry = existingEntries.first { existing in
-                Calendar.current.isDate(existing.date, inSameDayAs: entry.date) &&
-                existing.type == entry.type &&
-                existing.source == entry.source
+                (existing.uuid != nil && existing.uuid == sample.uuid.uuidString) ||
+                (Calendar.current.isDate(existing.date, inSameDayAs: entry.date) && existing.type == entry.type && existing.source == entry.source)
             }
             
             if existingEntry != nil {
@@ -486,6 +486,7 @@ class HealthManager: ObservableObject {
             }
             
             healthKitSampleMap[entry.id] = sample.uuid.uuidString
+            entry.syncedWithHealth = true
             newEntries.append(entry)
             addedCount += 1
         }
@@ -494,7 +495,7 @@ class HealthManager: ObservableObject {
             historyManager.addEntries(newEntries)
         }
         
-        print("📊 Sync completed for \(type): Added \(addedCount) entries, Skipped \(skippedCount) duplicates, Deleted \(entriesToDelete.count) entries")
+        print("📊 Sync completed for \(type): Added \(addedCount) entries, Skipped \(skippedCount) duplicates, Marked \(entriesToMarkDeleted.count) deleted")
         completion(true)
     }
     

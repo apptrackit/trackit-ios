@@ -71,6 +71,12 @@ struct SyncOperation: Codable, Identifiable {
     let retryCount: Int
     let backendId: Int?
     
+    // v2 sync fields
+    let uuid: String?
+    let clientLastUpdatedAt: Date
+    let isDeleted: Bool
+    let unit: String?
+    
     init(operationType: SyncOperationType, entry: StatEntry, retryCount: Int = 0) {
         self.id = UUID()
         self.operationType = operationType
@@ -82,10 +88,14 @@ struct SyncOperation: Codable, Identifiable {
         self.createdAt = Date()
         self.retryCount = retryCount
         self.backendId = entry.backendId
+        self.uuid = entry.uuid ?? entry.id.uuidString
+        self.clientLastUpdatedAt = entry.lastUpdatedAt
+        self.isDeleted = entry.isDeleted
+        self.unit = entry.unit ?? entry.type.unit
     }
 }
 
-// MARK: - Backend API Models
+// MARK: - Backend API Models (Legacy)
 struct CreateMetricRequest: Codable {
     let metric_type_id: Int
     let value: Double
@@ -129,7 +139,7 @@ struct MetricResponse: Codable {
     let error: String?
 }
 
-// MARK: - Metrics Fetching Models
+// MARK: - Metrics Fetching Models (Legacy)
 struct MetricsListResponse: Codable {
     let success: Bool
     let entries: [MetricData]
@@ -148,6 +158,83 @@ struct MetricData: Codable {
     let user_id: Int?
     let created_at: String?
     let updated_at: String?
+}
+
+// MARK: - V2 Mobile Sync Models
+struct MobileMetricEntryDTO: Codable {
+    let id: String
+    let metric_type: String?
+    let metric_type_id: Int?
+    let value: Double
+    let unit: String?
+    let timestamp: String?
+    let date: String?
+    let source: String?
+    let last_updated_at: String?
+    let is_deleted: Bool?
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.metric_type = try container.decodeIfPresent(String.self, forKey: .metric_type)
+        self.metric_type_id = try container.decodeIfPresent(Int.self, forKey: .metric_type_id)
+        // value may come as number or string; handle both
+        if let doubleValue = try? container.decode(Double.self, forKey: .value) {
+            self.value = doubleValue
+        } else if let stringValue = try? container.decode(String.self, forKey: .value), let doubleValue = Double(stringValue) {
+            self.value = doubleValue
+        } else {
+            self.value = 0
+        }
+        self.unit = try container.decodeIfPresent(String.self, forKey: .unit)
+        self.timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
+        self.date = try container.decodeIfPresent(String.self, forKey: .date)
+        self.source = try container.decodeIfPresent(String.self, forKey: .source)
+        self.last_updated_at = try container.decodeIfPresent(String.self, forKey: .last_updated_at)
+        self.is_deleted = try container.decodeIfPresent(Bool.self, forKey: .is_deleted)
+    }
+}
+
+struct SyncChangesResponseV2: Codable {
+    let entries: [MobileMetricEntryDTO]
+    let has_more: Bool
+    let server_timestamp: String
+}
+
+struct CreateMetricV2Request: Codable {
+    let id: String?
+    let metric_type: String?
+    let metric_type_id: Int?
+    let value: Double
+    let unit: String?
+    let timestamp: String?
+    let date: String?
+    let source: String
+}
+
+struct UpdateMetricV2Request: Codable {
+    let value: Double?
+    let unit: String?
+    let timestamp: String?
+    let source: String?
+    let client_last_updated_at: String
+}
+
+// MARK: - Date Helpers
+enum DateCoding {
+    static let iso8601: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        return f
+    }()
+    
+    static let iso8601NoFraction: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        return f
+    }()
 }
 
 // MARK: - Sync Status

@@ -76,4 +76,40 @@ class NetworkManager {
             throw AuthError.networkError(error)
         }
     }
+    
+    // Raw request helper for endpoints where we need full control (e.g., v2 sync)
+    func makeAuthenticatedRawRequest(_ endpoint: String, method: String = "GET", body: Data? = nil) async throws -> (Data, HTTPURLResponse) {
+        logger.debug("Making authenticated RAW request to: \(endpoint) with method: \(method)")
+        
+        guard let accessToken = secureStorage.getAccessToken() else {
+            throw AuthError.unauthorized
+        }
+        
+        let headers = [
+            "Authorization": "Bearer \(accessToken)"
+        ]
+        
+        guard let request = authService.createRequest(endpoint, method: method, body: body, headers: headers) else {
+            throw AuthError.invalidURL
+        }
+        
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.invalidResponse
+        }
+        
+        // If unauthorized, attempt refresh and retry once
+        if httpResponse.statusCode == 401 {
+            if let refreshToken = secureStorage.getRefreshToken(), let deviceId = secureStorage.getDeviceId() {
+                let refreshResponse = try await authService.refreshToken(refreshToken: refreshToken, deviceId: deviceId)
+                secureStorage.saveAccessToken(refreshResponse.accessToken)
+                secureStorage.saveRefreshToken(refreshResponse.refreshToken)
+                return try await makeAuthenticatedRawRequest(endpoint, method: method, body: body)
+            } else {
+                throw AuthError.unauthorized
+            }
+        }
+        
+        return (responseData, httpResponse)
+    }
 } 
