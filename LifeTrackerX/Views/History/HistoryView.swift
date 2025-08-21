@@ -28,6 +28,7 @@ struct HistoryView: View {
     let statType: StatType
     @State private var showingAddEntryView = false
     @State private var selectedEntry: StatEntry?
+    @AppStorage("selectedTheme") private var selectedTheme: String = "system"
     @State private var selectedTimeFrame: TimeFrame = .weekly
     @State private var isEditMode = false
     

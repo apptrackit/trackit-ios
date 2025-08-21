@@ -7,6 +7,7 @@ struct AccountView: View {
     @StateObject private var healthManager = HealthManager()
     @ObservedObject var historyManager: StatsHistoryManager
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("selectedTheme") private var selectedTheme: String = "system"
     @State private var showHealthAccessSheet = false
     @State private var showExportSheet = false
     @State private var isSigningOut = false
@@ -19,6 +20,18 @@ struct AccountView: View {
         let heightEntries = historyManager.getEntries(for: .height, source: .appleHealth)
         let bodyFatEntries = historyManager.getEntries(for: .bodyFat, source: .appleHealth)
         return !weightEntries.isEmpty || !heightEntries.isEmpty || !bodyFatEntries.isEmpty
+    }
+
+    // Local color scheme mapping so this sheet updates immediately when theme changes
+    private var selectedColorScheme: ColorScheme? {
+        switch selectedTheme {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil
+        }
     }
     
     var body: some View {
@@ -215,6 +228,18 @@ struct AccountView: View {
 // Placeholder views for new features
 struct ProfileEditView: View {
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("selectedTheme") private var selectedThemeRaw: String = "system"
+    
+    private var selectedColorScheme: ColorScheme? {
+        switch selectedThemeRaw {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil
+        }
+    }
     
     var body: some View {
         NavigationStack {
@@ -245,6 +270,7 @@ struct ProfileEditView: View {
                 }
             }
         }
+        .preferredColorScheme(selectedColorScheme)
     }
 }
 
@@ -283,6 +309,17 @@ struct NotificationsSettingsView: View {
 struct ThemeSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("selectedTheme") private var selectedThemeRaw: String = "system"
+    
+    private var selectedColorScheme: ColorScheme? {
+        switch selectedThemeRaw {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -304,6 +341,7 @@ struct ThemeSettingsView: View {
                 }
             }
         }
+        .preferredColorScheme(selectedColorScheme)
     }
 }
 

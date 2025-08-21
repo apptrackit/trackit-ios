@@ -377,7 +377,7 @@ struct EditPhotoView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                Color.black.edgesIgnoringSafeArea(.all)
+                Color(.systemBackground).edgesIgnoringSafeArea(.all)
                 
                 ScrollView {
                     VStack(spacing: 20) {
@@ -395,7 +395,7 @@ struct EditPhotoView: View {
                             } else {
                                 ZStack {
                                     Rectangle()
-                                        .fill(Color(red: 0.15, green: 0.15, blue: 0.15))
+                                        .fill(Color(.secondarySystemBackground))
                                         .frame(height: 300)
                                         .cornerRadius(12)
                                     
@@ -422,7 +422,7 @@ struct EditPhotoView: View {
                                     .foregroundColor(.blue)
                                     .padding(.vertical, 10)
                                     .padding(.horizontal, 20)
-                                    .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+                                    .background(Color(.secondarySystemBackground))
                                     .cornerRadius(8)
                             }
                             .onChange(of: selectedItem) { newValue in
@@ -436,7 +436,7 @@ struct EditPhotoView: View {
                             HStack {
                                 Text("Categories")
                                     .font(.headline)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                                 
                                 Spacer()
                                 
@@ -457,16 +457,15 @@ struct EditPhotoView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Date")
                                 .font(.headline)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                             
                             DatePicker("", selection: $selectedDate, displayedComponents: [.date])
                                 .datePickerStyle(.compact)
                                 .labelsHidden()
-                                .colorScheme(.dark)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.vertical, 10)
                                 .padding(.horizontal, 20)
-                                .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+                                .background(Color(.secondarySystemBackground))
                                 .cornerRadius(12)
                         }
                         .padding(.horizontal)
@@ -477,7 +476,7 @@ struct EditPhotoView: View {
                             historyManager: historyManager
                         )
                         .padding()
-                        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+                        .background(Color(.secondarySystemBackground))
                         .cornerRadius(16)
                         .padding(.horizontal)
                         
@@ -485,14 +484,14 @@ struct EditPhotoView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Notes")
                                 .font(.headline)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                             
                             TextEditor(text: $notes)
                                 .frame(height: 120)
                                 .padding(10)
-                                .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+                                .background(Color(.secondarySystemBackground))
                                 .cornerRadius(12)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                         }
                         .padding(.horizontal)
                         
@@ -722,12 +721,12 @@ struct MultipleCategorySelectorButton: View {
             VStack(spacing: 8) {
                 ZStack {
                     Circle()
-                        .fill(isSelected ? Color.blue : Color(red: 0.2, green: 0.2, blue: 0.2))
+                        .fill(isSelected ? Color.blue : Color(.secondarySystemBackground))
                         .frame(width: 60, height: 60)
                     
                     Image(systemName: category.iconName)
                         .font(.system(size: 24))
-                        .foregroundColor(.white)
+                        .foregroundColor(isSelected ? .white : .primary)
                     
                     if isSelected {
                         Circle()
@@ -738,7 +737,7 @@ struct MultipleCategorySelectorButton: View {
                 
                 Text(category.name)
                     .font(.caption)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
                     .multilineTextAlignment(.center)
             }
         }
@@ -756,17 +755,17 @@ struct CategorySelectorButton: View {
             VStack(spacing: 8) {
                 ZStack {
                     Circle()
-                        .fill(isSelected ? Color.blue : Color(red: 0.2, green: 0.2, blue: 0.2))
+                        .fill(isSelected ? Color.blue : Color(.secondarySystemBackground))
                         .frame(width: 60, height: 60)
                     
                     Image(systemName: category.iconName)
                         .font(.system(size: 24))
-                        .foregroundColor(.white)
+                        .foregroundColor(isSelected ? .white : .primary)
                 }
                 
                 Text(category.name)
                     .font(.caption)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
                     .multilineTextAlignment(.center)
             }
         }
@@ -801,7 +800,7 @@ struct MeasurementSummaryView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Measurements at this time")
                 .font(.headline)
-                .foregroundColor(.white)
+                .foregroundColor(.primary)
             
             if measurements.isEmpty {
                 Text("No measurements were found near this date")
@@ -814,7 +813,7 @@ struct MeasurementSummaryView: View {
                             HStack {
                                 Text(type.title)
                                     .font(.subheadline)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                                 
                                 Spacer()
                                 

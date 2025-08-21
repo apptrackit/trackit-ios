@@ -6,6 +6,7 @@ struct ProgressPhotosView: View {
     @State private var showingAddPhotoSheet = false
     @State private var selectedCategory: PhotoCategory?
     @State private var selectedPhoto: ProgressPhoto?
+    @AppStorage("selectedTheme") private var selectedTheme: String = "system"
     
     private let columns = [
         GridItem(.flexible()),

@@ -11,6 +11,7 @@ struct DashboardView: View {
     @State private var hasPerformedInitialSync = false
     @State private var isRefreshing = false
     @EnvironmentObject var authViewModel: AuthViewModel
+    @AppStorage("selectedTheme") private var selectedTheme: String = "system"
     
     // Computed properties to get latest values or nil
     private var weight: Double? {
