@@ -6,6 +6,7 @@ struct AccountView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @StateObject private var healthManager = HealthManager()
     @ObservedObject var historyManager: StatsHistoryManager
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showHealthAccessSheet = false
     @State private var showExportSheet = false
     @State private var isSigningOut = false
@@ -28,7 +29,7 @@ struct AccountView: View {
                         showHealthAccessSheet = true
                     }) {
                         HStack {
-                            Image("applehealthdark")
+                            Image(colorScheme == .dark ? "applehealthdark" : "applehealth")
                                 .resizable()
                                 .scaledToFit()
                                 .frame(width: 20, height: 20)
@@ -57,7 +58,7 @@ struct AccountView: View {
                 }
                 
                 Section(header: Text("Appearance")) {
-                    NavigationLink(destination: Text("Theme Settings")) {
+                    NavigationLink(destination: ThemeSettingsView()) {
                         Label("Theme", systemImage: "paintbrush.fill")
                     }
                     
@@ -272,6 +273,34 @@ struct NotificationsSettingsView: View {
                     Button("Done") {
                         dismiss()
                     }
+                }
+            }
+        }
+    }
+}
+
+// Inlined here to avoid project file reference changes
+struct ThemeSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("selectedTheme") private var selectedThemeRaw: String = "system"
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(footer: Text("Choose whether the app follows your device appearance or always uses Light or Dark.").font(.footnote)) {
+                    Picker("Appearance", selection: $selectedThemeRaw) {
+                        Text("Match Device").tag("system")
+                        Text("Light").tag("light")
+                        Text("Dark").tag("dark")
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            .navigationTitle("Theme")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Back") { dismiss() }
                 }
             }
         }

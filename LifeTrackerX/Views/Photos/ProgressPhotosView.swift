@@ -14,7 +14,7 @@ struct ProgressPhotosView: View {
     
     var body: some View {
         ZStack {
-            Color.black.edgesIgnoringSafeArea(.all)
+            Color(.systemBackground).edgesIgnoringSafeArea(.all)
             
             ScrollView {
                 VStack(spacing: 12) {
@@ -65,7 +65,7 @@ struct ProgressPhotosView: View {
                                 .font(.system(size: 14, weight: .semibold))
                             Text("Back")
                         }
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                     }
                 }
             }
@@ -75,7 +75,7 @@ struct ProgressPhotosView: View {
                     showingAddPhotoSheet = true
                 }) {
                     Image(systemName: "plus")
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                 }
             }
         }
@@ -260,17 +260,17 @@ struct CategoryButton: View {
             VStack(spacing: 4) {
                 ZStack {
                     Circle()
-                        .fill(isSelected ? Color.blue : Color(red: 0.2, green: 0.2, blue: 0.2))
+                        .fill(isSelected ? Color.blue : Color(.secondarySystemBackground))
                         .frame(width: 50, height: 50)
                     
                     Image(systemName: category.iconName)
                         .font(.system(size: 20))
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                 }
                 
                 Text(category.name)
                     .font(.system(size: 12))
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
                     .multilineTextAlignment(.center)
                     .lineLimit(1)
             }
@@ -290,7 +290,7 @@ struct EmptyStateView: View {
             
             Text("No \(category.name) Photos")
                 .font(.headline)
-                .foregroundColor(.white)
+                .foregroundColor(.primary)
             
             Text("Take your first photo")
                 .multilineTextAlignment(.center)
@@ -299,7 +299,7 @@ struct EmptyStateView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(20)
-        .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+        .background(Color(.secondarySystemBackground))
         .cornerRadius(12)
     }
 }
@@ -323,12 +323,12 @@ struct CategoryPhotoCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
                         Image(systemName: category.iconName)
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                             .font(.system(size: 14))
                         
                         Text(category.name)
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                         
                         if photo.categories.count > 1 {
                             Text("+\(photo.categories.count - 1)")
@@ -404,7 +404,7 @@ struct CategoryEmptyCard: View {
                 
                 Text(category.name)
                     .font(.subheadline)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
                 
                 Text("Add")
                     .font(.system(size: 12))
@@ -412,7 +412,7 @@ struct CategoryEmptyCard: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 150)
-            .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+            .background(Color(.secondarySystemBackground))
             .cornerRadius(12)
         }
     }

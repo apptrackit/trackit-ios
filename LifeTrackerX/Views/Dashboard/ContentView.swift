@@ -54,7 +54,7 @@ struct DashboardView: View {
     
     var body: some View {
         ZStack {
-            Color.black.edgesIgnoringSafeArea(.all)
+            Color(.systemBackground).edgesIgnoringSafeArea(.all)
             
             ScrollView {
                 VStack(spacing: 20) {
@@ -63,7 +63,7 @@ struct DashboardView: View {
                         Text(welcomeMessage)
                             .font(.title)
                             .fontWeight(.bold)
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                         
                         Text(Date().formatted(date: .complete, time: .omitted))
                             .font(.subheadline)
@@ -123,7 +123,7 @@ struct DashboardView: View {
                             Text("Progress")
                                 .font(.title2)
                                 .fontWeight(.bold)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                             Spacer()
                             
                             Picker("Time Frame", selection: $selectedTimeFrame) {
@@ -168,7 +168,7 @@ struct DashboardView: View {
                             Text("Recent Measurements")
                                 .font(.title2)
                                 .fontWeight(.bold)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                             Spacer()
                         }
                         
@@ -184,7 +184,7 @@ struct DashboardView: View {
                             Text("Quick Actions")
                                 .font(.title2)
                                 .fontWeight(.bold)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                             Spacer()
                         }
                         
@@ -316,7 +316,7 @@ struct SummaryCard: View {
                     Text(String(format: "%.1f", value))
                         .font(.title)
                         .fontWeight(.bold)
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                     
                     if !unit.isEmpty {
                         Text(unit)
@@ -333,7 +333,7 @@ struct SummaryCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
@@ -519,7 +519,7 @@ struct ProgressChartView: View {
                 Text(title)
                     .font(.headline)
                     .fontWeight(.semibold)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
                 Spacer()
                 Text("\(String(format: "%.1f", value))\(unit)")
                     .font(.subheadline)
@@ -597,7 +597,7 @@ struct ProgressChartView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
@@ -614,7 +614,7 @@ struct RecentMeasurementRow: View {
             VStack(alignment: .leading) {
                 Text(entry.type.title)
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
                 
                 Text(entry.date.formatted(date: .abbreviated, time: .shortened))
                     .font(.subheadline)
@@ -625,10 +625,10 @@ struct RecentMeasurementRow: View {
             
             Text("\(String(format: "%.1f", entry.value)) \(entry.type.unit)")
                 .font(.headline)
-                .foregroundColor(.white)
+                .foregroundColor(.primary)
         }
         .padding()
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
@@ -648,12 +648,12 @@ struct QuickActionButton: View {
                 
                 Text(title)
                     .font(.subheadline)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 40)
             .padding()
-            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+            .background(Color(.secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
     }

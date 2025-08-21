@@ -4,6 +4,7 @@ struct EntryRow: View {
     let entry: StatEntry
     let statType: StatType
     let onEdit: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         HStack {
@@ -12,7 +13,7 @@ struct EntryRow: View {
                 // Different icon based on data source
                 if entry.source == .appleHealth {
                     // Apple Health icon
-                    Image("applehealthdark")
+                    Image(colorScheme == .dark ? "applehealthdark" : "applehealth")
                         .resizable()
                         .scaledToFit()
                         .frame(width: 20, height: 20)
@@ -34,7 +35,7 @@ struct EntryRow: View {
                 Text(formattedValue)
                     .font(.title3)
                     .fontWeight(.medium)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
             }
             
             Spacer()

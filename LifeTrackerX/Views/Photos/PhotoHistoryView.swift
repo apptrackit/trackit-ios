@@ -12,7 +12,7 @@ struct PhotoHistoryView: View {
             HStack {
                 Text("Photo History")
                     .font(.title3)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
                 
                 Spacer()
                 
@@ -75,7 +75,7 @@ struct HistoryDateGroupHeader: View {
             Text(formatDate(date))
                 .font(.headline)
                 .fontWeight(.semibold)
-                .foregroundColor(.white)
+                .foregroundColor(.primary)
             
             Divider()
                 .background(Color.gray.opacity(0.5))
@@ -141,7 +141,7 @@ struct HistoryPhotoThumbnail: View {
                         Text("\(String(format: "%.1f", weight)) kg")
                             .font(.subheadline)
                             .fontWeight(.semibold)
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                             .padding(6)
                             .background(Color.black.opacity(0.7))
                             .cornerRadius(4)

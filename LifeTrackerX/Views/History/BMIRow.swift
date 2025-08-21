@@ -73,7 +73,7 @@ struct BMIRow: View {
                 Text(formattedValue)
                     .font(.title3)
                     .fontWeight(.medium)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
             }
             
             Spacer()

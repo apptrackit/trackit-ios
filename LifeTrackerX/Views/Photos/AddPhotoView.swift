@@ -20,7 +20,7 @@ struct AddPhotoView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                Color.black.edgesIgnoringSafeArea(.all)
+                Color(.systemBackground).edgesIgnoringSafeArea(.all)
                 
                 ScrollView {
                     VStack(spacing: 20) {
@@ -38,7 +38,7 @@ struct AddPhotoView: View {
                             } else {
                                 ZStack {
                                     Rectangle()
-                                        .fill(Color(red: 0.15, green: 0.15, blue: 0.15))
+                                        .fill(Color(.secondarySystemBackground))
                                         .frame(height: 300)
                                         .cornerRadius(12)
                                     
@@ -65,7 +65,7 @@ struct AddPhotoView: View {
                                     .foregroundColor(.blue)
                                     .padding(.vertical, 10)
                                     .padding(.horizontal, 20)
-                                    .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+                                    .background(Color(.secondarySystemBackground))
                                     .cornerRadius(8)
                             }
                             .onChange(of: selectedItem) { newValue in
@@ -79,7 +79,7 @@ struct AddPhotoView: View {
                             HStack {
                                 Text("Categories")
                                     .font(.headline)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                                 
                                 Spacer()
                                 
@@ -100,16 +100,15 @@ struct AddPhotoView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Date")
                                 .font(.headline)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                             
                             DatePicker("", selection: $selectedDate, displayedComponents: [.date])
                                 .datePickerStyle(.compact)
                                 .labelsHidden()
-                                .colorScheme(.dark)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.vertical, 10)
                                 .padding(.horizontal, 20)
-                                .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+                                .background(Color(.secondarySystemBackground))
                                 .cornerRadius(12)
                         }
                         .padding(.horizontal)
@@ -120,7 +119,7 @@ struct AddPhotoView: View {
                             historyManager: historyManager
                         )
                         .padding()
-                        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+                        .background(Color(.secondarySystemBackground))
                         .cornerRadius(16)
                         .padding(.horizontal)
                         
@@ -128,14 +127,14 @@ struct AddPhotoView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Notes")
                                 .font(.headline)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                             
                             TextEditor(text: $notes)
                                 .frame(height: 120)
                                 .padding(10)
-                                .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+                                .background(Color(.secondarySystemBackground))
                                 .cornerRadius(12)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                         }
                         .padding(.horizontal)
                         
