@@ -25,7 +25,7 @@ struct TrackDataView: View {
                         // Metric Type Icon
                         VStack(spacing: 16) {
                             Circle()
-                                .fill(Color(red: 0.11, green: 0.11, blue: 0.12))
+                                .fill(Color(.secondarySystemBackground))
                                 .frame(width: 80, height: 80)
                                 .overlay(
                                     Image(systemName: selectedType.iconName)
