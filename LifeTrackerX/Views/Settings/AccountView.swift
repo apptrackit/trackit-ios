@@ -6,6 +6,8 @@ struct AccountView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @StateObject private var healthManager = HealthManager()
     @ObservedObject var historyManager: StatsHistoryManager
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("selectedTheme") private var selectedTheme: String = "system"
     @State private var showHealthAccessSheet = false
     @State private var showExportSheet = false
     @State private var isSigningOut = false
@@ -19,6 +21,18 @@ struct AccountView: View {
         let bodyFatEntries = historyManager.getEntries(for: .bodyFat, source: .appleHealth)
         return !weightEntries.isEmpty || !heightEntries.isEmpty || !bodyFatEntries.isEmpty
     }
+
+    // Local color scheme mapping so this sheet updates immediately when theme changes
+    private var selectedColorScheme: ColorScheme? {
+        switch selectedTheme {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil
+        }
+    }
     
     var body: some View {
         NavigationStack {
@@ -28,7 +42,7 @@ struct AccountView: View {
                         showHealthAccessSheet = true
                     }) {
                         HStack {
-                            Image("applehealthdark")
+                            Image(colorScheme == .dark ? "applehealthdark" : "applehealth")
                                 .resizable()
                                 .scaledToFit()
                                 .frame(width: 20, height: 20)
@@ -57,7 +71,7 @@ struct AccountView: View {
                 }
                 
                 Section(header: Text("Appearance")) {
-                    NavigationLink(destination: Text("Theme Settings")) {
+                    NavigationLink(destination: ThemeSettingsView()) {
                         Label("Theme", systemImage: "paintbrush.fill")
                     }
                     
@@ -214,6 +228,18 @@ struct AccountView: View {
 // Placeholder views for new features
 struct ProfileEditView: View {
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("selectedTheme") private var selectedThemeRaw: String = "system"
+    
+    private var selectedColorScheme: ColorScheme? {
+        switch selectedThemeRaw {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil
+        }
+    }
     
     var body: some View {
         NavigationStack {
@@ -244,6 +270,7 @@ struct ProfileEditView: View {
                 }
             }
         }
+        .preferredColorScheme(selectedColorScheme)
     }
 }
 
@@ -275,6 +302,46 @@ struct NotificationsSettingsView: View {
                 }
             }
         }
+    }
+}
+
+// Inlined here to avoid project file reference changes
+struct ThemeSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("selectedTheme") private var selectedThemeRaw: String = "system"
+    
+    private var selectedColorScheme: ColorScheme? {
+        switch selectedThemeRaw {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(footer: Text("Choose whether the app follows your device appearance or always uses Light or Dark.").font(.footnote)) {
+                    Picker("Appearance", selection: $selectedThemeRaw) {
+                        Text("Match Device").tag("system")
+                        Text("Light").tag("light")
+                        Text("Dark").tag("dark")
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            .navigationTitle("Theme")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Back") { dismiss() }
+                }
+            }
+        }
+        .preferredColorScheme(selectedColorScheme)
     }
 }
 

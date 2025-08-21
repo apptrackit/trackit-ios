@@ -18,14 +18,14 @@ struct TrackDataView: View {
     var body: some View {
                 NavigationView {
             ZStack {
-                Color.black.edgesIgnoringSafeArea(.all)
+                Color(.systemBackground).edgesIgnoringSafeArea(.all)
                 
                 ScrollView {
                     VStack(spacing: 0) {
                         // Metric Type Icon
                         VStack(spacing: 16) {
                             Circle()
-                                .fill(Color(red: 0.11, green: 0.11, blue: 0.12))
+                                .fill(Color(.secondarySystemBackground))
                                 .frame(width: 80, height: 80)
                                 .overlay(
                                     Image(systemName: selectedType.iconName)
@@ -36,7 +36,7 @@ struct TrackDataView: View {
                             Text(selectedType.title)
                                 .font(.title)
                                 .fontWeight(.bold)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                         }
                         .padding(.vertical, 20)
                         
@@ -60,10 +60,10 @@ struct TrackDataView: View {
                             // Date Field
                             HStack {
                                 Text("Date")
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                                 Spacer()
                                 Text(date.formatted(date: .abbreviated, time: .omitted))
-                                    .foregroundColor(showingDatePicker ? .blue : .white)
+                                    .foregroundColor(showingDatePicker ? .blue : .primary)
                             }
                             .padding()
                             .contentShape(Rectangle())
@@ -81,7 +81,6 @@ struct TrackDataView: View {
                             if showingDatePicker {
                                 DatePicker("", selection: $date, in: ...Date(), displayedComponents: .date)
                                     .datePickerStyle(.graphical)
-                                    .colorScheme(.dark)
                                     .padding()
                                     .transition(.opacity)
                             }
@@ -95,10 +94,10 @@ struct TrackDataView: View {
                             // Time Field
                             HStack {
                                 Text("Time")
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                                 Spacer()
                                 Text(date.formatted(date: .omitted, time: .shortened))
-                                    .foregroundColor(showingTimePicker ? .blue : .white)
+                                    .foregroundColor(showingTimePicker ? .blue : .primary)
                             }
                             .padding()
                             .contentShape(Rectangle())
@@ -116,7 +115,6 @@ struct TrackDataView: View {
                             if showingTimePicker {
                                 DatePicker("", selection: $date, displayedComponents: .hourAndMinute)
                                     .datePickerStyle(.wheel)
-                                    .colorScheme(.dark)
                                     .padding()
                                     .transition(.opacity)
                             }
@@ -130,17 +128,17 @@ struct TrackDataView: View {
                             // Value Field
                             HStack {
                                 Text(selectedType.unit)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                                 Spacer()
                                 TextField("", text: $value)
                                     .keyboardType(.decimalPad)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                                     .multilineTextAlignment(.trailing)
                                     .focused($isValueFieldFocused)
                             }
                             .padding()
                         }
-                        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+                        .background(Color(.secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         .padding(.horizontal)
                         
@@ -158,7 +156,7 @@ struct TrackDataView: View {
                     }) {
                         Image(systemName: "xmark")
                             .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                     }
                 }
                 
@@ -168,7 +166,7 @@ struct TrackDataView: View {
                     }) {
                         Image(systemName: "checkmark")
                             .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(canSave ? .white : .gray)
+                            .foregroundColor(canSave ? .primary : .gray)
                             .frame(width: 32, height: 32)
                             .background(canSave ? .blue : .gray.opacity(0.4))
                             .clipShape(Circle())
@@ -223,7 +221,7 @@ struct MeasurementTypeButton: View {
                     .frame(height: 4)  // Add small bottom spacing
             }
             .frame(width: 80, height: 80)
-            .background(isSelected ? Color.blue : Color(red: 0.11, green: 0.11, blue: 0.12))
+            .background(isSelected ? Color.blue : Color(.secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
     }

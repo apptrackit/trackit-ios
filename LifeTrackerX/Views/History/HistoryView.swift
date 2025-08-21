@@ -28,6 +28,7 @@ struct HistoryView: View {
     let statType: StatType
     @State private var showingAddEntryView = false
     @State private var selectedEntry: StatEntry?
+    @AppStorage("selectedTheme") private var selectedTheme: String = "system"
     @State private var selectedTimeFrame: TimeFrame = .weekly
     @State private var isEditMode = false
     
@@ -37,7 +38,7 @@ struct HistoryView: View {
     
     var body: some View {
         ZStack {
-            Color.black.edgesIgnoringSafeArea(.all)
+            Color(.systemBackground).edgesIgnoringSafeArea(.all)
             
             ScrollView {
                 VStack(spacing: 20) {
@@ -50,7 +51,7 @@ struct HistoryView: View {
                     HStack {
                         Text("All Recorded Data")
                             .font(.headline)
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         
                         if !entries.isEmpty && !statType.isCalculated {
@@ -105,7 +106,7 @@ struct HistoryView: View {
                             
                             Text("No \(statType.title) History")
                                 .font(.headline)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                             
                             Text(statType == .bmi ? 
                                 "BMI is automatically calculated from your weight and height" :
@@ -162,7 +163,7 @@ struct HistoryView: View {
                                     }
                                 }
                             }
-                            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+                            .background(Color(.secondarySystemBackground))
                             .clipShape(RoundedRectangle(cornerRadius: 20))
                         }
                         .padding(.horizontal)
@@ -177,7 +178,7 @@ struct HistoryView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingAddEntryView = true }) {
                         Image(systemName: "plus")
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                     }
                 }
             }

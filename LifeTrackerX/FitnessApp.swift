@@ -13,6 +13,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 struct FitnessApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate: AppDelegate
     @StateObject private var authViewModel = AuthViewModel()
+    @AppStorage("selectedTheme") private var selectedThemeRaw: String = "system"
     
     init() {
         // Force portrait orientation for the entire app using modern approach
@@ -35,6 +36,20 @@ struct FitnessApp: App {
                         .environmentObject(authViewModel)
                 }
             }
+            .preferredColorScheme(selectedColorScheme)
+        }
+    }
+}
+
+private extension FitnessApp {
+    var selectedColorScheme: ColorScheme? {
+        switch selectedThemeRaw {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil
         }
     }
 }
