@@ -903,6 +903,8 @@ struct MeasurementComparisonRow: View {
     let type: StatType
     let oldValue: Double?
     let newValue: Double?
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     private var hasChange: Bool {
         guard let old = oldValue, let new = newValue else { return false }
@@ -985,12 +987,19 @@ struct MeasurementComparisonRow: View {
         let formatter = NumberFormatter()
         formatter.minimumFractionDigits = 1
         formatter.maximumFractionDigits = 1
+        var display = value
+        let lengthTypes: [StatType] = [.height, .waist, .bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm]
+        if type == .weight {
+            if preferredWeightUnit == "lb" { display = value * 2.20462262 }
+        } else if lengthTypes.contains(type) {
+            if preferredLengthUnit == "in" { display = value / 2.54 }
+        }
         
-        if let formattedValue = formatter.string(from: NSNumber(value: value)) {
+        if let formattedValue = formatter.string(from: NSNumber(value: display)) {
             return "\(formattedValue)"
         }
         
-        return "\(value)"
+        return "\(display)"
     }
     
     private func formatChange(_ change: Double, type: StatType) -> String {
@@ -1010,6 +1019,8 @@ struct MeasurementComparisonRow: View {
 struct MeasurementDetailView: View {
     let photo: ProgressPhoto
     let historyManager: StatsHistoryManager
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     private var measurements: [StatType: StatEntry] {
         var result: [StatType: StatEntry] = [:]
@@ -1095,10 +1106,19 @@ struct MeasurementDetailView: View {
         formatter.minimumFractionDigits = 1
         formatter.maximumFractionDigits = 1
         
-        if let formattedValue = formatter.string(from: NSNumber(value: value)) {
-            return "\(formattedValue) \(type.unit)"
+        var display = value
+        var unit = type.unit
+        let lengthTypes: [StatType] = [.height, .waist, .bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm]
+        if type == .weight {
+            if preferredWeightUnit == "lb" { display = value * 2.20462262; unit = "lb" } else { unit = "kg" }
+        } else if lengthTypes.contains(type) {
+            if preferredLengthUnit == "in" { display = value / 2.54; unit = "in" } else { unit = "cm" }
         }
         
-        return "\(value) \(type.unit)"
+        if let formattedValue = formatter.string(from: NSNumber(value: display)) {
+            return "\(formattedValue) \(unit)"
+        }
+        
+        return "\(display) \(unit)"
     }
 } 

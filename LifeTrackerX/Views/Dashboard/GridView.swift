@@ -7,6 +7,7 @@ struct GridView: View {
     let bodyFat: Double?
     @ObservedObject var historyManager: StatsHistoryManager
     @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     private var formattedBMI: String {
         if let bmi = bmi {
@@ -27,7 +28,7 @@ struct GridView: View {
                          historyManager: historyManager)
                 
                 StatCard(title: "Height",
-                         value: height != nil ? String(format: "%.0f cm", height!) : "No data",
+                         value: height != nil ? formattedHeight(height!) : "No data",
                          statType: .height,
                          historyManager: historyManager)
             }
@@ -63,5 +64,11 @@ private extension GridView {
         let value = preferredWeightUnit == "lb" ? kg * 2.20462262 : kg
         let number = value.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", value) : String(format: "%.1f", value)
         return "\(number) \(preferredWeightUnit == "lb" ? "lb" : "kg")"
+    }
+    
+    func formattedHeight(_ cm: Double) -> String {
+        let value = preferredLengthUnit == "in" ? (cm / 2.54) : cm
+        let number = value.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", value) : String(format: "%.1f", value)
+        return "\(number) \(preferredLengthUnit == "in" ? "in" : "cm")"
     }
 }

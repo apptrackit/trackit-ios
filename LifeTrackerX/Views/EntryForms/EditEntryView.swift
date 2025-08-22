@@ -9,6 +9,7 @@ struct EditEntryView: View {
     @State private var showingTimePicker = false
     @FocusState private var isValueFieldFocused: Bool
     @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     init(historyManager: StatsHistoryManager, entry: StatEntry) {
         self.historyManager = historyManager
@@ -116,7 +117,7 @@ struct EditEntryView: View {
                             
                             // Value Field
                             HStack {
-                                Text(entry.type == .weight ? (preferredWeightUnit == "lb" ? "lb" : "kg") : entry.type.unit)
+                                Text(unitLabel)
                                     .foregroundColor(.primary)
                                 Spacer()
                                 TextField("", value: $entry.value, formatter: NumberFormatter())
@@ -180,11 +181,24 @@ struct EditEntryView: View {
             var updated = entry
             if entry.type == .weight && preferredWeightUnit == "lb" {
                 updated.value = entry.value / 2.20462262
+            } else if entry.type == .height && preferredLengthUnit == "in" {
+                updated.value = entry.value * 2.54
             }
             historyManager.updateEntry(updated)
             dismiss()
         } else {
             showAlert = true
+        }
+    }
+    
+    private var unitLabel: String {
+        switch entry.type {
+        case .weight:
+            return preferredWeightUnit == "lb" ? "lb" : "kg"
+        case .height:
+            return preferredLengthUnit == "in" ? "in" : "cm"
+        default:
+            return entry.type.unit
         }
     }
 }

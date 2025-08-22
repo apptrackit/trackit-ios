@@ -349,6 +349,7 @@ struct ThemeSettingsView: View {
 struct UnitsSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg" // "kg" or "lb"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm" // "cm" or "in"
     @AppStorage("selectedTheme") private var selectedThemeRaw: String = "system"
     
     private var selectedColorScheme: ColorScheme? {
@@ -366,6 +367,14 @@ struct UnitsSettingsView: View {
                     Picker("Weight", selection: $preferredWeightUnit) {
                         Text("Kilograms (kg)").tag("kg")
                         Text("Pounds (lb)").tag("lb")
+                    }
+                    .pickerStyle(.segmented)
+                }
+                
+                Section(footer: Text("Choose how length values are shown. Data remains stored in centimeters.").font(.footnote)) {
+                    Picker("Length", selection: $preferredLengthUnit) {
+                        Text("Centimeters (cm)").tag("cm")
+                        Text("Inches (in)").tag("in")
                     }
                     .pickerStyle(.segmented)
                 }
@@ -391,6 +400,7 @@ struct HealthAccessView: View {
     @State private var isRefreshing = false
     @State private var showingActionSheet = false
     @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     // Computed property to check if there are any Apple Health entries
     private var hasAppleHealthData: Bool {
@@ -566,7 +576,7 @@ struct HealthAccessView: View {
                             
                             Text("Height entries: \(historyManager.getEntries(for: .height, source: .appleHealth).count)")
                             ForEach(historyManager.getEntries(for: .height, source: .appleHealth).prefix(5), id: \.id) { entry in
-                                Text("- \(entry.date.formatted()): \(String(format: "%.1f", entry.value)) cm")
+                                Text("- \(entry.date.formatted()): \(formattedLength(entry.value))")
                                     .font(.caption)
                             }
                             
@@ -709,6 +719,15 @@ struct HealthAccessView: View {
             return "\(String(format: "%.1f", pounds)) lb"
         } else {
             return "\(String(format: "%.1f", kg)) kg"
+        }
+    }
+    
+    private func formattedLength(_ cm: Double) -> String {
+        if preferredLengthUnit == "in" {
+            let inches = cm / 2.54
+            return "\(String(format: "%.1f", inches)) in"
+        } else {
+            return "\(String(format: "%.1f", cm)) cm"
         }
     }
 }

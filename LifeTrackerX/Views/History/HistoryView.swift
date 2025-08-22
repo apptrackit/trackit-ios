@@ -32,9 +32,21 @@ struct HistoryView: View {
     @State private var selectedTimeFrame: TimeFrame = .weekly
     @State private var isEditMode = false
     @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     var entries: [StatEntry] {
         historyManager.getEntries(for: statType)
+    }
+    
+    private var unitLabel: String {
+        switch statType {
+        case .weight:
+            return preferredWeightUnit == "lb" ? "lb" : "kg"
+        case .height:
+            return preferredLengthUnit == "in" ? "in" : "cm"
+        default:
+            return statType.unit
+        }
     }
     
     var body: some View {
@@ -121,7 +133,7 @@ struct HistoryView: View {
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
                             // Metric type label on top left
-                            Text(statType == .weight ? (preferredWeightUnit == "lb" ? "lb" : "kg") : statType.unit)
+                            Text(unitLabel)
                                 .font(.subheadline)
                                 .foregroundColor(.gray)
                                 .padding(.horizontal)

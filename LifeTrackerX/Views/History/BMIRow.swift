@@ -3,6 +3,7 @@ import SwiftUI
 struct BMIRow: View {
     let entry: StatEntry
     @ObservedObject var historyManager: StatsHistoryManager
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     private var weightAndHeight: (weight: Double, height: Double)? {
@@ -37,7 +38,9 @@ struct BMIRow: View {
             if let data = weightAndHeight {
                 let w = preferredWeightUnit == "lb" ? data.weight * 2.20462262 : data.weight
                 let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
-                return "W: \(String(format: "%.1f", w)) \(unit), H: \(String(format: "%.1f", data.height)) cm"
+                let hUnit = preferredLengthUnit == "in" ? "in" : "cm"
+                let hVal = preferredLengthUnit == "in" ? (data.height / 2.54) : data.height
+                return "W: \(String(format: "%.1f", w)) \(unit), H: \(String(format: "%.1f", hVal)) \(hUnit)"
             }
         case .lbm, .fm:
             if let data = weightAndHeight, let bf = bodyFat {
@@ -49,7 +52,9 @@ struct BMIRow: View {
             if let data = weightAndHeight, let bf = bodyFat {
                 let w = preferredWeightUnit == "lb" ? data.weight * 2.20462262 : data.weight
                 let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
-                return "W: \(String(format: "%.1f", w)) \(unit), H: \(String(format: "%.1f", data.height)) cm, BF: \(String(format: "%.1f", bf))%"
+                let hUnit = preferredLengthUnit == "in" ? "in" : "cm"
+                let hVal = preferredLengthUnit == "in" ? (data.height / 2.54) : data.height
+                return "W: \(String(format: "%.1f", w)) \(unit), H: \(String(format: "%.1f", hVal)) \(hUnit), BF: \(String(format: "%.1f", bf))%"
             }
         case .bmr:
             if let data = weightAndHeight, let bf = bodyFat {
@@ -62,7 +67,9 @@ struct BMIRow: View {
             if let data = weightAndHeight {
                 let w = preferredWeightUnit == "lb" ? data.weight * 2.20462262 : data.weight
                 let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
-                return "W: \(String(format: "%.1f", w)) \(unit), H: \(String(format: "%.1f", data.height)) cm"
+                let hUnit = preferredLengthUnit == "in" ? "in" : "cm"
+                let hVal = preferredLengthUnit == "in" ? (data.height / 2.54) : data.height
+                return "W: \(String(format: "%.1f", w)) \(unit), H: \(String(format: "%.1f", hVal)) \(hUnit)"
             }
         default:
             return ""
