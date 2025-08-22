@@ -11,6 +11,9 @@ struct DashboardView: View {
     @State private var hasPerformedInitialSync = false
     @State private var isRefreshing = false
     @EnvironmentObject var authViewModel: AuthViewModel
+    @AppStorage("selectedTheme") private var selectedTheme: String = "system"
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     // Computed properties to get latest values or nil
     private var weight: Double? {
@@ -33,6 +36,20 @@ struct DashboardView: View {
         return nil
     }
     
+    private var displayWeight: Double? {
+        guard let weight else { return nil }
+        return preferredWeightUnit == "lb" ? weight * 2.20462262 : weight
+    }
+    
+    private var displayWeightUnit: String { preferredWeightUnit == "lb" ? "lb" : "kg" }
+    
+    private var displayHeight: Double? {
+        guard let height else { return nil }
+        return preferredLengthUnit == "in" ? height / 2.54 : height
+    }
+    
+    private var displayHeightUnit: String { preferredLengthUnit == "in" ? "in" : "cm" }
+    
     private var recentMeasurements: [StatEntry] {
         let types: [StatType] = [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder, .glutes]
         return types.flatMap { type in
@@ -54,7 +71,7 @@ struct DashboardView: View {
     
     var body: some View {
         ZStack {
-            Color.black.edgesIgnoringSafeArea(.all)
+            Color(.systemBackground).edgesIgnoringSafeArea(.all)
             
             ScrollView {
                 VStack(spacing: 20) {
@@ -63,7 +80,7 @@ struct DashboardView: View {
                         Text(welcomeMessage)
                             .font(.title)
                             .fontWeight(.bold)
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                         
                         Text(Date().formatted(date: .complete, time: .omitted))
                             .font(.subheadline)
@@ -79,8 +96,8 @@ struct DashboardView: View {
                             // Weight Card
                             SummaryCard(
                                 title: "Weight",
-                                value: weight,
-                                unit: "kg",
+                                value: displayWeight,
+                                unit: displayWeightUnit,
                                 icon: "scalemass.fill",
                                 color: .blue
                             )
@@ -108,8 +125,8 @@ struct DashboardView: View {
                             // Height Card
                             SummaryCard(
                                 title: "Height",
-                                value: height,
-                                unit: "cm",
+                                value: displayHeight,
+                                unit: displayHeightUnit,
                                 icon: "ruler.fill",
                                 color: .purple
                             )
@@ -123,7 +140,7 @@ struct DashboardView: View {
                             Text("Progress")
                                 .font(.title2)
                                 .fontWeight(.bold)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                             Spacer()
                             
                             Picker("Time Frame", selection: $selectedTimeFrame) {
@@ -137,11 +154,11 @@ struct DashboardView: View {
                         }
                         
                         // Weight Progress Chart
-                        if let weight = weight {
+                        if let weight = displayWeight {
                             ProgressChartView(
                                 title: "Weight Trend",
                                 value: weight,
-                                unit: "kg",
+                                unit: displayWeightUnit,
                                 historyManager: historyManager,
                                 statType: .weight,
                                 timeFrame: selectedTimeFrame
@@ -168,7 +185,7 @@ struct DashboardView: View {
                             Text("Recent Measurements")
                                 .font(.title2)
                                 .fontWeight(.bold)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                             Spacer()
                         }
                         
@@ -184,7 +201,7 @@ struct DashboardView: View {
                             Text("Quick Actions")
                                 .font(.title2)
                                 .fontWeight(.bold)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                             Spacer()
                         }
                         
@@ -316,7 +333,7 @@ struct SummaryCard: View {
                     Text(String(format: "%.1f", value))
                         .font(.title)
                         .fontWeight(.bold)
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                     
                     if !unit.isEmpty {
                         Text(unit)
@@ -333,7 +350,7 @@ struct SummaryCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
@@ -345,39 +362,45 @@ struct ProgressChartView: View {
     let historyManager: StatsHistoryManager
     let statType: StatType
     let timeFrame: TimeFrame
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
+    
+    private var allEntries: [StatEntry] {
+        historyManager.getEntries(for: statType).sorted { $0.date < $1.date }
+    }
     
     private var chartData: [StatEntry] {
-        let calendar = Calendar.current
-        let now = Date()
-        
-        // Get all entries and sort by date
-        let allEntries = historyManager.getEntries(for: statType)
-            .sorted { $0.date < $1.date }
-        
-        // If no entries, return empty array
         guard !allEntries.isEmpty else { return [] }
         
-        // Calculate the date range based on timeFrame
-        let startDate: Date
+        let calendar = Calendar.current
+        let mostRecentEntry = allEntries.last!
+        let mostRecentDate = mostRecentEntry.date
+        
+        let filteredEntries: [StatEntry]
+        
         switch timeFrame {
         case .weekly:
-            startDate = calendar.date(byAdding: .day, value: -7, to: now) ?? now
+            // Show 7 days ending with the most recent data's day
+            let startDate = calendar.date(byAdding: .day, value: -6, to: mostRecentDate) ?? mostRecentDate
+            filteredEntries = allEntries.filter { $0.date >= startDate && $0.date <= mostRecentDate }
+            
         case .monthly:
-            startDate = calendar.date(byAdding: .day, value: -30, to: now) ?? now
+            // Show 30 days ending with the most recent data's day
+            let startDate = calendar.date(byAdding: .day, value: -29, to: mostRecentDate) ?? mostRecentDate
+            filteredEntries = allEntries.filter { $0.date >= startDate && $0.date <= mostRecentDate }
+            
         case .sixMonths:
-            startDate = calendar.date(byAdding: .month, value: -6, to: now) ?? now
+            // Show 6 months ending with the most recent data's month
+            let startDate = calendar.date(byAdding: .month, value: -5, to: mostRecentDate) ?? mostRecentDate
+            filteredEntries = allEntries.filter { $0.date >= startDate && $0.date <= mostRecentDate }
+            
         case .yearly:
-            startDate = calendar.date(byAdding: .year, value: -1, to: now) ?? now
+            // Show 12 months ending with the most recent data's month
+            let startDate = calendar.date(byAdding: .month, value: -11, to: mostRecentDate) ?? mostRecentDate
+            filteredEntries = allEntries.filter { $0.date >= startDate && $0.date <= mostRecentDate }
+            
         case .allTime:
-            return allEntries // Return all data for all time
-        }
-        
-        // Filter entries for the selected timeFrame
-        let filteredEntries = allEntries.filter { $0.date >= startDate }
-        
-        // If no entries in the selected timeFrame, return the last 5 entries
-        if filteredEntries.isEmpty {
-            return Array(allEntries.suffix(min(5, allEntries.count)))
+            filteredEntries = allEntries
         }
         
         return filteredEntries
@@ -386,17 +409,16 @@ struct ProgressChartView: View {
     private var yAxisRange: ClosedRange<Double> {
         guard !chartData.isEmpty else { return 0...100 }
         
-        let values = chartData.map { $0.value }
+        let values = chartData.map { convertValue($0.value) }
         let min = values.min() ?? 0
         let max = values.max() ?? 100
         
-        // If all values are the same, create a range around that value
         if min == max {
-            let padding = max * 0.1 // 10% padding
+            let padding = max * 0.1
             return (max - padding)...(max + padding)
         }
         
-        let padding = (max - min) * 0.15 // 15% padding for better visualization
+        let padding = (max - min) * 0.15
         return (min - padding)...(max + padding)
     }
     
@@ -404,42 +426,53 @@ struct ProgressChartView: View {
         guard !chartData.isEmpty else { return [] }
         
         let calendar = Calendar.current
-        let startDate = chartData.first!.date
-        let endDate = chartData.last!.date
+        let mostRecentDate = chartData.last!.date
+        let oldestDate = chartData.first!.date
         
         switch timeFrame {
         case .weekly:
-            // Show every day of the week
+            // Show 7 days: Mon, Tue, Wed, Thu, Fri, Sat, Sun
+            // Based on the most recent data's day
             return (0..<7).compactMap { dayOffset in
-                calendar.date(byAdding: .day, value: -6 + dayOffset, to: endDate)
+                calendar.date(byAdding: .day, value: -6 + dayOffset, to: mostRecentDate)
             }
+            
         case .monthly:
-            // Show 4 evenly spaced dates
+            // Show 4 evenly spaced dates across the month
             return (0..<4).compactMap { index in
-                let daysOffset = Int(Double(index) * 30.0 / 3.0)
-                return calendar.date(byAdding: .day, value: -30 + daysOffset, to: endDate)
+                let daysOffset = -29 + (index * 10) // Roughly every 10 days
+                return calendar.date(byAdding: .day, value: daysOffset, to: mostRecentDate)
             }
+            
         case .sixMonths:
             // Show 6 months
             return (0..<6).compactMap { monthOffset in
-                calendar.date(byAdding: .month, value: -5 + monthOffset, to: endDate)
+                calendar.date(byAdding: .month, value: -5 + monthOffset, to: mostRecentDate)
             }
+            
         case .yearly:
-            // Show 12 months
+            // Show all 12 months
             return (0..<12).compactMap { monthOffset in
-                calendar.date(byAdding: .month, value: -11 + monthOffset, to: endDate)
+                calendar.date(byAdding: .month, value: -11 + monthOffset, to: mostRecentDate)
             }
+            
         case .allTime:
-            // For all time, show years if data spans multiple years
-            let yearRange = calendar.component(.year, from: endDate) - calendar.component(.year, from: startDate)
-            if yearRange > 1 {
+            let yearRange = calendar.component(.year, from: mostRecentDate) - calendar.component(.year, from: oldestDate)
+            
+            if yearRange <= 10 {
+                // Show all years if 10 or fewer
                 return (0...yearRange).compactMap { yearOffset in
-                    calendar.date(from: DateComponents(year: calendar.component(.year, from: startDate) + yearOffset))
+                    calendar.date(from: DateComponents(year: calendar.component(.year, from: oldestDate) + yearOffset))
                 }
             } else {
-                // If less than 2 years, show months
-                return (0..<12).compactMap { monthOffset in
-                    calendar.date(byAdding: .month, value: monthOffset, to: startDate)
+                // Show first, 2 middle, and last year if more than 10 years
+                let firstYear = calendar.component(.year, from: oldestDate)
+                let lastYear = calendar.component(.year, from: mostRecentDate)
+                let middleYear1 = firstYear + (lastYear - firstYear) / 3
+                let middleYear2 = firstYear + 2 * (lastYear - firstYear) / 3
+                
+                return [firstYear, middleYear1, middleYear2, lastYear].compactMap { year in
+                    calendar.date(from: DateComponents(year: year))
                 }
             }
         }
@@ -452,26 +485,30 @@ struct ProgressChartView: View {
         
         switch timeFrame {
         case .weekly:
+            // Show day names: Mon, Tue, Wed, etc.
             formatter.dateFormat = "E"
             return formatter.string(from: date)
+            
         case .monthly:
+            // Show month day: Jan 7, Jan 14, etc.
             formatter.dateFormat = "MMM d"
             return formatter.string(from: date)
+            
         case .sixMonths:
+            // Show month names: Jan, Feb, Mar, etc.
             formatter.dateFormat = "MMM"
             return formatter.string(from: date)
+            
         case .yearly:
+            // Show first letter of months: J, F, M, A, M, J, J, A, S, O, N, D
             formatter.dateFormat = "MMM"
-            return formatter.string(from: date)
+            let monthName = formatter.string(from: date)
+            return String(monthName.prefix(1))
+            
         case .allTime:
-            let yearRange = calendar.component(.year, from: chartData.last?.date ?? date) - calendar.component(.year, from: chartData.first?.date ?? date)
-            if yearRange > 1 {
-                formatter.dateFormat = "yyyy"
-                return formatter.string(from: date)
-            } else {
-                formatter.dateFormat = "MMM"
-                return formatter.string(from: date)
-            }
+            // Show years: 2020, 2021, 2022, etc.
+            formatter.dateFormat = "yyyy"
+            return formatter.string(from: date)
         }
     }
     
@@ -491,23 +528,8 @@ struct ProgressChartView: View {
     }
     
     private var shouldShowDots: Bool {
-        // Show dots for sparse data (less than 10 points)
-        if chartData.count < 10 {
-            return true
-        }
-        
-        // Show dots for weekly view (usually sparse)
-        if timeFrame == .weekly {
-            return true
-        }
-        
-        // Show dots for monthly view if data is sparse
-        if timeFrame == .monthly && chartData.count < 15 {
-            return true
-        }
-        
-        // Don't show dots for dense data in longer timeframes
-        return false
+        // Show dots for sparse data or specific timeframes
+        return chartData.count < 10 || timeFrame == .weekly || (timeFrame == .monthly && chartData.count < 15)
     }
     
     var body: some View {
@@ -516,7 +538,7 @@ struct ProgressChartView: View {
                 Text(title)
                     .font(.headline)
                     .fontWeight(.semibold)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
                 Spacer()
                 Text("\(String(format: "%.1f", value))\(unit)")
                     .font(.subheadline)
@@ -540,28 +562,26 @@ struct ProgressChartView: View {
                     ForEach(chartData) { entry in
                         LineMark(
                             x: .value("Date", entry.date),
-                            y: .value("Value", entry.value)
+                            y: .value("Value", convertValue(entry.value))
                         )
                         .foregroundStyle(chartColor.gradient)
                         .interpolationMethod(.catmullRom)
                         .lineStyle(StrokeStyle(lineWidth: 3))
                         
-                        // Only show dots for sparse data (less than 10 points) or for specific timeframes
                         if shouldShowDots {
                             PointMark(
                                 x: .value("Date", entry.date),
-                                y: .value("Value", entry.value)
+                                y: .value("Value", convertValue(entry.value))
                             )
                             .foregroundStyle(chartColor)
                             .symbolSize(20)
                         }
                     }
                 }
-                .frame(height: 150)
+                .frame(height: 160)
                 .chartYScale(domain: yAxisRange)
                 .chartPlotStyle { plotArea in
-                    plotArea
-                        .background(Color.clear)
+                    plotArea.background(Color.clear)
                 }
                 .chartXAxis {
                     AxisMarks(values: xAxisDates) { value in
@@ -570,9 +590,10 @@ struct ProgressChartView: View {
                         AxisValueLabel {
                             if let date = value.as(Date.self) {
                                 Text(formatDate(date))
-                                    .font(.caption2)
-                                    .fontWeight(.medium)
+                                    .font(.system(size: 10, weight: .medium))
                                     .foregroundColor(.gray)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(1)
                             }
                         }
                     }
@@ -593,14 +614,36 @@ struct ProgressChartView: View {
                 }
             }
         }
-        .padding()
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+    
+    private var isLengthType: Bool {
+        switch statType {
+        case .height, .waist, .bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    private func convertValue(_ value: Double) -> Double {
+        if statType == .weight {
+            return value * (preferredWeightUnit == "lb" ? 2.20462262 : 1.0)
+        }
+        if isLengthType {
+            return value * (preferredLengthUnit == "in" ? (1.0/2.54) : 1.0)
+        }
+        return value
     }
 }
 
 struct RecentMeasurementRow: View {
     let entry: StatEntry
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     var body: some View {
         HStack {
@@ -611,7 +654,7 @@ struct RecentMeasurementRow: View {
             VStack(alignment: .leading) {
                 Text(entry.type.title)
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
                 
                 Text(entry.date.formatted(date: .abbreviated, time: .shortened))
                     .font(.subheadline)
@@ -620,13 +663,24 @@ struct RecentMeasurementRow: View {
             
             Spacer()
             
-            Text("\(String(format: "%.1f", entry.value)) \(entry.type.unit)")
+            Text(formattedValue(entry))
                 .font(.headline)
-                .foregroundColor(.white)
+                .foregroundColor(.primary)
         }
         .padding()
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+    
+    private func formattedValue(_ entry: StatEntry) -> String {
+        if entry.type == .weight {
+            let value = preferredWeightUnit == "lb" ? entry.value * 2.20462262 : entry.value
+            return "\(String(format: "%.1f", value)) \(preferredWeightUnit == "lb" ? "lb" : "kg")"
+        } else if entry.type == .height {
+            let value = preferredLengthUnit == "in" ? entry.value / 2.54 : entry.value
+            return "\(String(format: "%.1f", value)) \(preferredLengthUnit == "in" ? "in" : "cm")"
+        }
+        return "\(String(format: "%.1f", entry.value)) \(entry.type.unit)"
     }
 }
 
@@ -645,12 +699,12 @@ struct QuickActionButton: View {
                 
                 Text(title)
                     .font(.subheadline)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 40)
             .padding()
-            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+            .background(Color(.secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
     }

@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ProgressView: View {
     @ObservedObject private var historyManager = StatsHistoryManager.shared
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     // Helper function to get the date of the most recent entry for a stat type
     private func getLatestEntryDate(for statType: StatType) -> Date {
@@ -123,18 +125,24 @@ struct ProgressView: View {
 struct StatRow: View {
     let statType: StatType
     let value: Double?
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     private func formatValue(_ value: Double) -> String {
+        var displayValue = value
+        let lengthTypes: [StatType] = [.height, .waist, .bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm]
+        if statType == .weight && preferredWeightUnit == "lb" {
+            displayValue = value * 2.20462262
+        } else if lengthTypes.contains(statType) && preferredLengthUnit == "in" {
+            displayValue = value / 2.54
+        }
         switch statType {
         case .bmr:
-            // BMR should be shown as a whole number
-            return String(format: "%.0f", value)
+            return String(format: "%.0f", displayValue)
         case .bodyFat:
-            // Body fat percentage should show one decimal
-            return String(format: "%.1f", value)
+            return String(format: "%.1f", displayValue)
         default:
-            // All other measurements show one decimal
-            return String(format: "%.1f", value)
+            return String(format: "%.1f", displayValue)
         }
     }
     
@@ -150,7 +158,13 @@ struct StatRow: View {
                     .font(.headline)
                 
                 if let value = value {
-                    Text("\(formatValue(value)) \(statType.unit)")
+                    let unit: String = {
+                        let lengthTypes: [StatType] = [.height, .waist, .bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm]
+                        if statType == .weight { return preferredWeightUnit == "lb" ? "lb" : "kg" }
+                        if lengthTypes.contains(statType) { return preferredLengthUnit == "in" ? "in" : "cm" }
+                        return statType.unit
+                    }()
+                    Text("\(formatValue(value)) \(unit)")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 } else {

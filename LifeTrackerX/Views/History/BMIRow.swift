@@ -3,6 +3,8 @@ import SwiftUI
 struct BMIRow: View {
     let entry: StatEntry
     @ObservedObject var historyManager: StatsHistoryManager
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     private var weightAndHeight: (weight: Double, height: Double)? {
         let weightEntry = historyManager.getEntries(for: .weight)
@@ -34,24 +36,40 @@ struct BMIRow: View {
         switch entry.type {
         case .bmi:
             if let data = weightAndHeight {
-                return "W: \(String(format: "%.1f", data.weight)) kg, H: \(String(format: "%.1f", data.height)) cm"
+                let w = preferredWeightUnit == "lb" ? data.weight * 2.20462262 : data.weight
+                let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
+                let hUnit = preferredLengthUnit == "in" ? "in" : "cm"
+                let hVal = preferredLengthUnit == "in" ? (data.height / 2.54) : data.height
+                return "W: \(String(format: "%.1f", w)) \(unit), H: \(String(format: "%.1f", hVal)) \(hUnit)"
             }
         case .lbm, .fm:
             if let data = weightAndHeight, let bf = bodyFat {
-                return "W: \(String(format: "%.1f", data.weight)) kg, BF: \(String(format: "%.1f", bf))%"
+                let w = preferredWeightUnit == "lb" ? data.weight * 2.20462262 : data.weight
+                let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
+                return "W: \(String(format: "%.1f", w)) \(unit), BF: \(String(format: "%.1f", bf))%"
             }
         case .ffmi:
             if let data = weightAndHeight, let bf = bodyFat {
-                return "W: \(String(format: "%.1f", data.weight)) kg, H: \(String(format: "%.1f", data.height)) cm, BF: \(String(format: "%.1f", bf))%"
+                let w = preferredWeightUnit == "lb" ? data.weight * 2.20462262 : data.weight
+                let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
+                let hUnit = preferredLengthUnit == "in" ? "in" : "cm"
+                let hVal = preferredLengthUnit == "in" ? (data.height / 2.54) : data.height
+                return "W: \(String(format: "%.1f", w)) \(unit), H: \(String(format: "%.1f", hVal)) \(hUnit), BF: \(String(format: "%.1f", bf))%"
             }
         case .bmr:
             if let data = weightAndHeight, let bf = bodyFat {
                 let lbm = data.weight * (1 - bf / 100)
-                return "LBM: \(String(format: "%.1f", lbm)) kg"
+                let display = preferredWeightUnit == "lb" ? lbm * 2.20462262 : lbm
+                let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
+                return "LBM: \(String(format: "%.1f", display)) \(unit)"
             }
         case .bsa:
             if let data = weightAndHeight {
-                return "W: \(String(format: "%.1f", data.weight)) kg, H: \(String(format: "%.1f", data.height)) cm"
+                let w = preferredWeightUnit == "lb" ? data.weight * 2.20462262 : data.weight
+                let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
+                let hUnit = preferredLengthUnit == "in" ? "in" : "cm"
+                let hVal = preferredLengthUnit == "in" ? (data.height / 2.54) : data.height
+                return "W: \(String(format: "%.1f", w)) \(unit), H: \(String(format: "%.1f", hVal)) \(hUnit)"
             }
         default:
             return ""
@@ -73,7 +91,7 @@ struct BMIRow: View {
                 Text(formattedValue)
                     .font(.title3)
                     .fontWeight(.medium)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
             }
             
             Spacer()
@@ -91,7 +109,6 @@ struct BMIRow: View {
         }
         .padding(.vertical, 12)
         .padding(.horizontal)
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
     }
     
     func formatDate(_ date: Date) -> String {

@@ -26,7 +26,7 @@ struct StatCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
                 
                 if value == "No data" || value == "N/A" {
                     Text(value)
@@ -37,7 +37,7 @@ struct StatCard: View {
                     // Direct display for BMI with large font
                     Text(value)
                         .font(.system(size: 36, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                         .zIndex(1) // Ensure text is on top
                 } else {
                     // For other stats with units
@@ -45,13 +45,13 @@ struct StatCard: View {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(components[0])
                             .font(.system(size: 36, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                             .zIndex(1) // Ensure text is on top
                         
                         if components.count > 1 {
                             Text(components[1])
                                 .font(.system(size: 20, weight: .bold))
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                         }
                     }
                 }
@@ -59,7 +59,7 @@ struct StatCard: View {
             .padding(.leading, 20)
         }
         .frame(width: 159, height: 100, alignment: .leading)
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .padding(5)
         .onTapGesture {

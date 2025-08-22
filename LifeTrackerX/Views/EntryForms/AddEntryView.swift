@@ -10,6 +10,8 @@ struct AddEntryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showAlert = false
     @FocusState private var isValueFieldFocused: Bool
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     private var canSave: Bool {
         !value.isEmpty && Double(value.replacingOccurrences(of: ",", with: ".")) != nil
@@ -18,14 +20,14 @@ struct AddEntryView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                Color.black.edgesIgnoringSafeArea(.all)
+                Color(.systemBackground).edgesIgnoringSafeArea(.all)
                 
                 ScrollView {
                     VStack(spacing: 0) {
                         // Metric Type Icon
                         VStack(spacing: 16) {
                             Circle()
-                                .fill(Color(red: 0.11, green: 0.11, blue: 0.12))
+                                .fill(Color(.secondarySystemBackground))
                                 .frame(width: 80, height: 80)
                                 .overlay(
                                     Image(systemName: statType.iconName)
@@ -36,7 +38,7 @@ struct AddEntryView: View {
                             Text(statType.title)
                                 .font(.title)
                                 .fontWeight(.bold)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                         }
                         .padding(.vertical, 40)
                         
@@ -45,10 +47,10 @@ struct AddEntryView: View {
                             // Date Field
                             HStack {
                                 Text("Date")
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                                 Spacer()
                                 Text(date.formatted(date: .abbreviated, time: .omitted))
-                                    .foregroundColor(showingDatePicker ? .blue : .white)
+                                    .foregroundColor(showingDatePicker ? .blue : .primary)
                             }
                             .padding()
                             .contentShape(Rectangle())
@@ -66,7 +68,6 @@ struct AddEntryView: View {
                             if showingDatePicker {
                                 DatePicker("", selection: $date, in: ...Date(), displayedComponents: .date)
                                     .datePickerStyle(.graphical)
-                                    .colorScheme(.dark)
                                     .padding()
                                     .transition(.opacity)
                             }
@@ -80,10 +81,10 @@ struct AddEntryView: View {
                             // Time Field
                             HStack {
                                 Text("Time")
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                                 Spacer()
                                 Text(date.formatted(date: .omitted, time: .shortened))
-                                    .foregroundColor(showingTimePicker ? .blue : .white)
+                                    .foregroundColor(showingTimePicker ? .blue : .primary)
                             }
                             .padding()
                             .contentShape(Rectangle())
@@ -101,7 +102,6 @@ struct AddEntryView: View {
                             if showingTimePicker {
                                 DatePicker("", selection: $date, displayedComponents: .hourAndMinute)
                                     .datePickerStyle(.wheel)
-                                    .colorScheme(.dark)
                                     .padding()
                                     .transition(.opacity)
                             }
@@ -114,18 +114,18 @@ struct AddEntryView: View {
                             
                             // Value Field
                             HStack {
-                                Text(statType.unit)
-                                    .foregroundColor(.white)
+                                Text(unitLabel)
+                                    .foregroundColor(.primary)
                                 Spacer()
                                 TextField("", text: $value)
                                     .keyboardType(.decimalPad)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                                     .multilineTextAlignment(.trailing)
                                     .focused($isValueFieldFocused)
                             }
                             .padding()
                         }
-                        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+                        .background(Color(.secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         .padding(.horizontal)
                         
@@ -143,7 +143,7 @@ struct AddEntryView: View {
                     }) {
                         Image(systemName: "xmark")
                             .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                     }
                 }
                 
@@ -153,7 +153,7 @@ struct AddEntryView: View {
                     }) {
                         Image(systemName: "checkmark")
                             .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(canSave ? .white : .gray)
+                            .foregroundColor(canSave ? .primary : .gray)
                             .frame(width: 32, height: 32)
                             .background(canSave ? .blue : .gray.opacity(0.4))
                             .clipShape(Circle())
@@ -176,11 +176,31 @@ struct AddEntryView: View {
     private func saveEntry() {
         guard let valueDouble = Double(value.replacingOccurrences(of: ",", with: ".")) else { return }
         if date <= Date() {
-            let entry = StatEntry(date: date, value: valueDouble, type: statType)
+            // Convert to kg for storage if needed
+            let storedValue: Double
+            if statType == .weight {
+                storedValue = (preferredWeightUnit == "lb") ? (valueDouble / 2.20462262) : valueDouble
+            } else if statType == .height {
+                storedValue = (preferredLengthUnit == "in") ? (valueDouble * 2.54) : valueDouble
+            } else {
+                storedValue = valueDouble
+            }
+            let entry = StatEntry(date: date, value: storedValue, type: statType)
             historyManager.addEntry(entry)
             dismiss()
         } else {
             showAlert = true
+        }
+    }
+    
+    private var unitLabel: String {
+        switch statType {
+        case .weight:
+            return preferredWeightUnit == "lb" ? "lb" : "kg"
+        case .height:
+            return preferredLengthUnit == "in" ? "in" : "cm"
+        default:
+            return statType.unit
         }
     }
 } 

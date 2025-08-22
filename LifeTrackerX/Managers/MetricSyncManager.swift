@@ -23,7 +23,8 @@ class MetricSyncManager: ObservableObject {
     private let pendingOperationsKey = "PendingMetricOperations"
     
     private init() {
-        loadPendingOperations()
+        // Clear any old pending operations on app start to prevent infinite loops
+        clearAllPendingOperations()
         setupNetworkMonitoring()
         setupPeriodicSync()
     }
@@ -59,6 +60,20 @@ class MetricSyncManager: ObservableObject {
     
     // MARK: - Queue Management
     func queueOperation(_ operation: SyncOperation) {
+        // Check if this exact operation is already queued to prevent duplicates
+        let isDuplicate = pendingOperations.contains { existing in
+            existing.operationType == operation.operationType &&
+            existing.statType == operation.statType &&
+            existing.date == operation.date &&
+            existing.value == operation.value &&
+            existing.isAppleHealth == operation.isAppleHealth
+        }
+        
+        if isDuplicate {
+            logger.info("Skipping duplicate operation: \(operation.operationType.rawValue) for \(operation.statType.rawValue)")
+            return
+        }
+        
         pendingOperations.append(operation)
         savePendingOperations()
         updatePendingCount()
@@ -113,12 +128,39 @@ class MetricSyncManager: ObservableObject {
     private func processOperation(_ operation: SyncOperation) async throws {
         switch operation.operationType {
         case .create:
+            // For create operations, check if the entry already exists on the backend
+            if await entryExistsOnBackend(operation) {
+                logger.info("Entry already exists on backend, skipping create: \(operation.statType.rawValue) for \(operation.date)")
+                return
+            }
             try await createMetric(operation)
         case .update:
             try await updateMetric(operation)
         case .delete:
             try await deleteMetric(operation)
         }
+    }
+    
+    private func entryExistsOnBackend(_ operation: SyncOperation) async -> Bool {
+        do {
+            let response: MetricsListResponse = try await networkManager.makeAuthenticatedRequest(
+                "/api/metrics",
+                method: "GET"
+            )
+            
+            if response.success {
+                let backendTypeId = BackendMetricType.from(operation.statType)?.rawValue
+                let existingEntry = response.entries.first { metric in
+                    metric.metric_type_id == backendTypeId &&
+                    metric.date == Self.dateFormatter.string(from: operation.date) &&
+                    metric.is_apple_health == operation.isAppleHealth
+                }
+                return existingEntry != nil
+            }
+        } catch {
+            logger.error("Failed to check if entry exists on backend: \(error.localizedDescription)")
+        }
+        return false
     }
     
     private func handleOperationFailure(_ operation: SyncOperation, error: Error) {
@@ -227,9 +269,11 @@ class MetricSyncManager: ObservableObject {
     }
     
     func syncAllEntries(_ entries: [StatEntry]) {
+        logger.info("Starting sync of \(entries.count) entries to backend")
         for entry in entries {
             // Only sync non-calculated metrics
             if !entry.type.isCalculated {
+                logger.info("Syncing entry: \(entry.type.rawValue) from \(entry.source.rawValue) for date \(entry.date)")
                 syncEntry(entry, operation: .create)
             }
         }

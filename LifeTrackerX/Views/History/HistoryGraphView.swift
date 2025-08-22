@@ -5,6 +5,8 @@ struct HistoryGraphView: View {
     @ObservedObject var historyManager: StatsHistoryManager
     let statType: StatType
     @Binding var selectedTimeFrame: TimeFrame
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     var filteredData: [StatEntry] {
         let calendar = Calendar.current
@@ -37,6 +39,36 @@ struct HistoryGraphView: View {
         }
     }
     
+    var currentValue: Double {
+        filteredData.last?.value ?? 0.0
+    }
+    
+    private var displayCurrentValue: Double {
+        let base = filteredData.last?.value ?? 0.0
+        if statType == .weight {
+            return base * (preferredWeightUnit == "lb" ? 2.20462262 : 1.0)
+        }
+        if isLengthType {
+            return base * (preferredLengthUnit == "in" ? (1.0/2.54) : 1.0)
+        }
+        return base
+    }
+    
+    private var unitString: String {
+        if statType == .weight { return preferredWeightUnit == "lb" ? "lb" : "kg" }
+        if isLengthType { return preferredLengthUnit == "in" ? "in" : "cm" }
+        return statType.unit
+    }
+
+    private var isLengthType: Bool {
+        switch statType {
+        case .height, .waist, .bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm:
+            return true
+        default:
+            return false
+        }
+    }
+    
     var body: some View {
         VStack {
             Picker("Time Frame", selection: $selectedTimeFrame) {
@@ -47,62 +79,14 @@ struct HistoryGraphView: View {
             .pickerStyle(SegmentedPickerStyle())
             .padding()
             
-            if filteredData.isEmpty {
-                Text("No data available for this time period")
-                    .foregroundColor(.gray)
-                    .padding()
-            } else {
-                Chart {
-                    ForEach(filteredData) { entry in
-                        LineMark(
-                            x: .value("Date", entry.date),
-                            y: .value(statType.title, entry.value)
-                        )
-                        .foregroundStyle(Color.blue)
-                        
-                        PointMark(
-                            x: .value("Date", entry.date),
-                            y: .value(statType.title, entry.value)
-                        )
-                        .foregroundStyle(Color.blue)
-                    }
-                }
-                .chartXAxis {
-                    AxisMarks(values: .automatic) { value in
-                        AxisGridLine()
-                        AxisValueLabel(format: getDateFormat())
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .leading)
-                }
-                .chartYScale(domain: getYAxisDomain())
-            }
+            ProgressChartView(
+                title: statType.title,
+                value: displayCurrentValue,
+                unit: unitString,
+                historyManager: historyManager,
+                statType: statType,
+                timeFrame: selectedTimeFrame
+            )
         }
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-        .cornerRadius(10)
-    }
-    
-    private func getDateFormat() -> Date.FormatStyle {
-        switch selectedTimeFrame {
-        case .weekly:
-            return .dateTime.weekday(.abbreviated)
-        case .monthly:
-            return .dateTime.day()
-        case .sixMonths, .yearly:
-            return .dateTime.month(.abbreviated)
-        case .allTime:
-            return .dateTime.year()
-        }
-    }
-    
-    private func getYAxisDomain() -> ClosedRange<Double> {
-        guard let minValue = filteredData.map({ $0.value }).min(),
-              let maxValue = filteredData.map({ $0.value }).max() else {
-            return 0...100
-        }
-        
-        let padding = max((maxValue - minValue) * 0.1, 1.0)
-        return (minValue - padding)...(maxValue + padding)
     }
 }

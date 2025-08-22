@@ -28,16 +28,30 @@ struct HistoryView: View {
     let statType: StatType
     @State private var showingAddEntryView = false
     @State private var selectedEntry: StatEntry?
+    @AppStorage("selectedTheme") private var selectedTheme: String = "system"
     @State private var selectedTimeFrame: TimeFrame = .weekly
     @State private var isEditMode = false
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     var entries: [StatEntry] {
         historyManager.getEntries(for: statType)
     }
     
+    private var unitLabel: String {
+        switch statType {
+        case .weight:
+            return preferredWeightUnit == "lb" ? "lb" : "kg"
+        case .height:
+            return preferredLengthUnit == "in" ? "in" : "cm"
+        default:
+            return statType.unit
+        }
+    }
+    
     var body: some View {
         ZStack {
-            Color.black.edgesIgnoringSafeArea(.all)
+            Color(.systemBackground).edgesIgnoringSafeArea(.all)
             
             ScrollView {
                 VStack(spacing: 20) {
@@ -48,9 +62,9 @@ struct HistoryView: View {
                         .padding(.horizontal)
                     
                     HStack {
-                        Text("History")
+                        Text("All Recorded Data")
                             .font(.headline)
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         
                         if !entries.isEmpty && !statType.isCalculated {
@@ -105,7 +119,7 @@ struct HistoryView: View {
                             
                             Text("No \(statType.title) History")
                                 .font(.headline)
-                                .foregroundColor(.white)
+                                .foregroundColor(.primary)
                             
                             Text(statType == .bmi ? 
                                 "BMI is automatically calculated from your weight and height" :
@@ -117,35 +131,55 @@ struct HistoryView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
                     } else {
-                        LazyVStack {
-                            ForEach(entries) { entry in
-                                HStack {
-                                    if isEditMode && !statType.isCalculated && entry.source != .automated {
-                                        Button(action: {
-                                            withAnimation(.easeInOut) {
-                                                historyManager.removeEntry(entry)
+                        VStack(alignment: .leading, spacing: 8) {
+                            // Metric type label on top left
+                            Text(unitLabel)
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .padding(.horizontal)
+                            
+                            VStack(spacing: 0) {
+                                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                                    VStack(spacing: 0) {
+                                        HStack {
+                                            if isEditMode && !statType.isCalculated && entry.source != .automated {
+                                                Button(action: {
+                                                    withAnimation(.easeInOut) {
+                                                        historyManager.removeEntry(entry)
+                                                    }
+                                                }) {
+                                                    Image(systemName: "minus.circle.fill")
+                                                        .foregroundColor(.red)
+                                                        .padding(.leading)
+                                                }
+                                                .transition(.move(edge: .leading))
                                             }
-                                        }) {
-                                            Image(systemName: "minus.circle.fill")
-                                                .foregroundColor(.red)
-                                                .padding(.leading)
+                                            
+                                            if statType.isCalculated {
+                                                BMIRow(entry: entry, historyManager: historyManager)
+                                            } else {
+                                                EntryRow(entry: entry, statType: statType) {
+                                                    if !isEditMode {
+                                                        selectedEntry = entry
+                                                    }
+                                                }
+                                            }
                                         }
-                                        .transition(.move(edge: .leading))
-                                    }
-                                    
-                                    if statType.isCalculated {
-                                        BMIRow(entry: entry, historyManager: historyManager)
-                                    } else {
-                                        EntryRow(entry: entry, statType: statType) {
-                                            if !isEditMode {
-                                                selectedEntry = entry
-                                            }
+                                        .animation(.easeInOut, value: isEditMode)
+                                        
+                                        // Add separator line if not the last item
+                                        if index < entries.count - 1 {
+                                            Divider()
+                                                .background(Color.gray.opacity(0.3))
+                                                .padding(.horizontal)
                                         }
                                     }
                                 }
-                                .animation(.easeInOut, value: isEditMode)
                             }
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
                         }
+                        .padding(.horizontal)
                     }
                 }
             }
@@ -157,7 +191,7 @@ struct HistoryView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingAddEntryView = true }) {
                         Image(systemName: "plus")
-                            .foregroundColor(.white)
+                            .foregroundColor(.primary)
                     }
                 }
             }

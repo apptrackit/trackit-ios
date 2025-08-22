@@ -6,6 +6,8 @@ struct AccountView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @StateObject private var healthManager = HealthManager()
     @ObservedObject var historyManager: StatsHistoryManager
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("selectedTheme") private var selectedTheme: String = "system"
     @State private var showHealthAccessSheet = false
     @State private var showExportSheet = false
     @State private var isSigningOut = false
@@ -19,6 +21,18 @@ struct AccountView: View {
         let bodyFatEntries = historyManager.getEntries(for: .bodyFat, source: .appleHealth)
         return !weightEntries.isEmpty || !heightEntries.isEmpty || !bodyFatEntries.isEmpty
     }
+
+    // Local color scheme mapping so this sheet updates immediately when theme changes
+    private var selectedColorScheme: ColorScheme? {
+        switch selectedTheme {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil
+        }
+    }
     
     var body: some View {
         NavigationStack {
@@ -28,7 +42,7 @@ struct AccountView: View {
                         showHealthAccessSheet = true
                     }) {
                         HStack {
-                            Image("applehealthdark")
+                            Image(colorScheme == .dark ? "applehealthdark" : "applehealth")
                                 .resizable()
                                 .scaledToFit()
                                 .frame(width: 20, height: 20)
@@ -54,14 +68,15 @@ struct AccountView: View {
                             }
                         }
                     }
+                    .disabled(true)
                 }
                 
                 Section(header: Text("Appearance")) {
-                    NavigationLink(destination: Text("Theme Settings")) {
+                    NavigationLink(destination: ThemeSettingsView()) {
                         Label("Theme", systemImage: "paintbrush.fill")
                     }
                     
-                    NavigationLink(destination: Text("Units Settings")) {
+                    NavigationLink(destination: UnitsSettingsView()) {
                         Label("Units", systemImage: "ruler")
                     }
                 }
@@ -214,6 +229,18 @@ struct AccountView: View {
 // Placeholder views for new features
 struct ProfileEditView: View {
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("selectedTheme") private var selectedThemeRaw: String = "system"
+    
+    private var selectedColorScheme: ColorScheme? {
+        switch selectedThemeRaw {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil
+        }
+    }
     
     var body: some View {
         NavigationStack {
@@ -244,6 +271,7 @@ struct ProfileEditView: View {
                 }
             }
         }
+        .preferredColorScheme(selectedColorScheme)
     }
 }
 
@@ -278,6 +306,92 @@ struct NotificationsSettingsView: View {
     }
 }
 
+// Inlined here to avoid project file reference changes
+struct ThemeSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("selectedTheme") private var selectedThemeRaw: String = "system"
+    
+    private var selectedColorScheme: ColorScheme? {
+        switch selectedThemeRaw {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(footer: Text("Choose whether the app follows your device appearance or always uses Light or Dark.").font(.footnote)) {
+                    Picker("Appearance", selection: $selectedThemeRaw) {
+                        Text("Match Device").tag("system")
+                        Text("Light").tag("light")
+                        Text("Dark").tag("dark")
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            .navigationTitle("Theme")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Back") { dismiss() }
+                }
+            }
+        }
+        .preferredColorScheme(selectedColorScheme)
+    }
+}
+
+// Simple units settings view
+struct UnitsSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg" // "kg" or "lb"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm" // "cm" or "in"
+    @AppStorage("selectedTheme") private var selectedThemeRaw: String = "system"
+    
+    private var selectedColorScheme: ColorScheme? {
+        switch selectedThemeRaw {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(footer: Text("Choose how weight values are shown. Data remains stored in kilograms.").font(.footnote)) {
+                    Picker("Weight", selection: $preferredWeightUnit) {
+                        Text("Kilograms (kg)").tag("kg")
+                        Text("Pounds (lb)").tag("lb")
+                    }
+                    .pickerStyle(.segmented)
+                }
+                
+                Section(footer: Text("Choose how length values are shown. Data remains stored in centimeters.").font(.footnote)) {
+                    Picker("Length", selection: $preferredLengthUnit) {
+                        Text("Centimeters (cm)").tag("cm")
+                        Text("Inches (in)").tag("in")
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            .navigationTitle("Units")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Back") { dismiss() }
+                }
+            }
+        }
+        .preferredColorScheme(selectedColorScheme)
+    }
+}
+
 struct HealthAccessView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var healthManager: HealthManager
@@ -286,6 +400,8 @@ struct HealthAccessView: View {
     @State private var isLoading = false
     @State private var isRefreshing = false
     @State private var showingActionSheet = false
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     // Computed property to check if there are any Apple Health entries
     private var hasAppleHealthData: Bool {
@@ -293,6 +409,31 @@ struct HealthAccessView: View {
         let heightEntries = historyManager.getEntries(for: .height, source: .appleHealth)
         let bodyFatEntries = historyManager.getEntries(for: .bodyFat, source: .appleHealth)
         return !weightEntries.isEmpty || !heightEntries.isEmpty || !bodyFatEntries.isEmpty
+    }
+    
+    // HealthKit authorization status
+    private var healthKitStatusColor: Color {
+        if healthManager.isAuthorized {
+            if healthManager.isWriteAuthorized {
+                return .green
+            } else {
+                return .orange
+            }
+        } else {
+            return .red
+        }
+    }
+    
+    private var healthKitStatusText: String {
+        if healthManager.isAuthorized {
+            if healthManager.isWriteAuthorized {
+                return "Connected (Read & Write)"
+            } else {
+                return "Connected (Read Only)"
+            }
+        } else {
+            return "Not Connected"
+        }
     }
     
     var body: some View {
@@ -313,6 +454,18 @@ struct HealthAccessView: View {
                         .font(.title2)
                         .fontWeight(.bold)
                     
+                    // Authorization status indicator
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(healthKitStatusColor)
+                            .frame(width: 8, height: 8)
+                        
+                        Text(healthKitStatusText)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal)
+                    
                     Text("This app needs access to your health data to provide accurate tracking and insights. Your data will be automatically synced with Apple Health.")
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
@@ -326,6 +479,18 @@ struct HealthAccessView: View {
                     .background(Color(.systemGray6))
                     .cornerRadius(12)
                     .padding(.horizontal)
+                    
+                    // Show note about read-only mode
+                    if healthManager.isAuthorized && !healthManager.isWriteAuthorized {
+                        HStack(spacing: 8) {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.orange)
+                            Text("Read-only mode: Your manual entries won't be synced to Apple Health")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal)
+                    }
                     
                     if healthManager.isAuthorized {
                         if hasAppleHealthData {
@@ -356,7 +521,7 @@ struct HealthAccessView: View {
                             Button(action: {
                                 importHealthData()
                             }) {
-                                Text("Connect Apple Health")
+                                Text(healthManager.isWriteAuthorized ? "Import Health Data" : "Import Health Data (Read Only)")
                                     .fontWeight(.bold)
                                     .foregroundColor(.white)
                                     .frame(maxWidth: .infinity)
@@ -406,13 +571,13 @@ struct HealthAccessView: View {
                             
                             Text("Weight entries: \(historyManager.getEntries(for: .weight, source: .appleHealth).count)")
                             ForEach(historyManager.getEntries(for: .weight, source: .appleHealth).prefix(5), id: \.id) { entry in
-                                Text("- \(entry.date.formatted()): \(String(format: "%.1f", entry.value)) kg")
+                                Text("- \(entry.date.formatted()): \(formattedWeight(entry.value))")
                                     .font(.caption)
                             }
                             
                             Text("Height entries: \(historyManager.getEntries(for: .height, source: .appleHealth).count)")
                             ForEach(historyManager.getEntries(for: .height, source: .appleHealth).prefix(5), id: \.id) { entry in
-                                Text("- \(entry.date.formatted()): \(String(format: "%.1f", entry.value)) cm")
+                                Text("- \(entry.date.formatted()): \(formattedLength(entry.value))")
                                     .font(.caption)
                             }
                             
@@ -461,9 +626,13 @@ struct HealthAccessView: View {
             if healthManager.isAuthorized {
                 print("🔑 Authorization successful")
                 
-                // First sync existing manual entries to Apple Health
-                print("📤 Syncing existing manual entries to Apple Health")
-                self.historyManager.syncManualEntriesToHealthKit()
+                // First sync existing manual entries to Apple Health (only if write access is available)
+                if healthManager.isWriteAuthorized {
+                    print("📤 Syncing existing manual entries to Apple Health")
+                    self.historyManager.syncManualEntriesToHealthKit()
+                } else {
+                    print("⚠️ Write access not available - manual entries will not be synced to HealthKit")
+                }
                 
                 // Then import Apple Health data
                 print("📥 Importing data from Apple Health")
@@ -483,12 +652,16 @@ struct HealthAccessView: View {
             showDebugInfo = true
             if success {
                 print("✅ Health data import successful")
-                // After successful import, sync any remaining manual entries
-                if healthManager.isAuthorized {
+                
+                // Sync Apple Health entries to backend
+                self.historyManager.syncAppleHealthEntriesToBackend()
+                
+                // After successful import, sync any remaining manual entries (only if write access is available)
+                if healthManager.isWriteAuthorized {
                     print("📤 Syncing manual entries after import")
                     self.historyManager.syncManualEntriesToHealthKit()
                 } else {
-                    print("❌ Cannot sync manual entries - not authorized")
+                    print("⚠️ Write access not available - manual entries will not be synced to HealthKit")
                 }
             } else {
                 print("❌ Health data import failed")
@@ -506,9 +679,17 @@ struct HealthAccessView: View {
                 showDebugInfo = true
                 if success {
                     print("✅ Data refresh successful")
-                    // After successful refresh, sync manual entries
-                    print("📤 Syncing manual entries after refresh")
-                    self.historyManager.syncManualEntriesToHealthKit()
+                    
+                    // Sync Apple Health entries to backend
+                    self.historyManager.syncAppleHealthEntriesToBackend()
+                    
+                    // After successful refresh, sync manual entries (only if write access is available)
+                    if healthManager.isWriteAuthorized {
+                        print("📤 Syncing manual entries after refresh")
+                        self.historyManager.syncManualEntriesToHealthKit()
+                    } else {
+                        print("⚠️ Write access not available - manual entries will not be synced to HealthKit")
+                    }
                 } else {
                     print("❌ Data refresh failed")
                 }
@@ -531,6 +712,24 @@ struct HealthAccessView: View {
         // Show the debug info and stop loading
         showDebugInfo = true
         isLoading = false
+    }
+
+    private func formattedWeight(_ kg: Double) -> String {
+        if preferredWeightUnit == "lb" {
+            let pounds = kg * 2.20462262
+            return "\(String(format: "%.1f", pounds)) lb"
+        } else {
+            return "\(String(format: "%.1f", kg)) kg"
+        }
+    }
+    
+    private func formattedLength(_ cm: Double) -> String {
+        if preferredLengthUnit == "in" {
+            let inches = cm / 2.54
+            return "\(String(format: "%.1f", inches)) in"
+        } else {
+            return "\(String(format: "%.1f", cm)) cm"
+        }
     }
 }
 

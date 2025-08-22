@@ -6,6 +6,7 @@ class HealthManager: ObservableObject {
     private let healthStore = HKHealthStore()
     @Published var isHealthDataAvailable = false
     @Published var isAuthorized = false
+    @Published var isWriteAuthorized = false
     @Published var fetchingStatus: String = ""
     // Add this trigger to force view updates
     @Published var lastUpdateTimestamp: Date = Date()
@@ -73,24 +74,37 @@ class HealthManager: ObservableObject {
     }
     
     func checkAuthorizationStatus(shouldRequestAccess: Bool = false) {
+        // Check authorization status for all types we want to read
+        var allReadAuthorized = true
+        for type in typesToRead {
+            let status = healthStore.authorizationStatus(for: type)
+            if status.rawValue == 0 || status.rawValue == 2 { // .notDetermined = 0, .sharingDenied = 2
+                print("🔑 Read access denied for \(type)")
+                allReadAuthorized = false
+                break
+            }
+        }
+        
         // Check authorization status for all types we want to write
-        var allAuthorized = true
+        var allWriteAuthorized = true
         for type in typesToWrite {
             let status = healthStore.authorizationStatus(for: type)
-            print("🔑 HealthKit authorization status for \(type): \(status.rawValue)")
             if status != .sharingAuthorized {
-                allAuthorized = false
+                print("🔑 Write access denied for \(type)")
+                allWriteAuthorized = false
                 break
             }
         }
         
         DispatchQueue.main.async {
-            self.isAuthorized = allAuthorized
-            print("🔑 isAuthorized set to: \(self.isAuthorized)")
+            self.isAuthorized = allReadAuthorized
+            self.isWriteAuthorized = allWriteAuthorized
+            print("🔑 isAuthorized (read) set to: \(self.isAuthorized)")
+            print("🔑 isWriteAuthorized set to: \(self.isWriteAuthorized)")
             
             // Only request authorization if explicitly asked to do so
             if !self.isAuthorized && shouldRequestAccess {
-                print("🔑 Not authorized, requesting authorization...")
+                print("🔑 Not authorized for reading, requesting authorization...")
                 self.requestHealthAuthorization()
             }
         }
@@ -117,29 +131,54 @@ class HealthManager: ObservableObject {
                 }
                 
                 // Re-check authorization status for all types
-                var allAuthorized = true
-                for type in self.typesToWrite {
+                var allReadAuthorized = true
+                for type in self.typesToRead {
                     let status = self.healthStore.authorizationStatus(for: type)
-                    print("🔑 Post-request status for \(type): \(status.rawValue)")
-                    if status != .sharingAuthorized {
-                        allAuthorized = false
+                    if status.rawValue == 0 || status.rawValue == 2 { // .notDetermined = 0, .sharingDenied = 2
+                        print("🔑 Post-request read access denied for \(type)")
+                        allReadAuthorized = false
                         break
                     }
                 }
                 
-                self.isAuthorized = allAuthorized
-                print("🔑 Post-request isAuthorized set to: \(self.isAuthorized)")
+                var allWriteAuthorized = true
+                for type in self.typesToWrite {
+                    let status = self.healthStore.authorizationStatus(for: type)
+                    if status != .sharingAuthorized {
+                        print("🔑 Post-request write access denied for \(type)")
+                        allWriteAuthorized = false
+                        break
+                    }
+                }
                 
-                if success && allAuthorized {
-                    print("✅ HealthKit authorization successful")
-                    self.fetchingStatus = "Authorization successful"
+                self.isAuthorized = allReadAuthorized
+                self.isWriteAuthorized = allWriteAuthorized
+                print("🔑 Post-request isAuthorized (read) set to: \(self.isAuthorized)")
+                print("🔑 Post-request isWriteAuthorized set to: \(self.isWriteAuthorized)")
+                
+                if allReadAuthorized {
+                    if allWriteAuthorized {
+                        print("✅ HealthKit authorization successful (read & write access)")
+                        self.fetchingStatus = "Authorization successful"
+                    } else {
+                        print("✅ HealthKit read authorization successful (write access denied)")
+                        self.fetchingStatus = "Read authorization successful"
+                    }
                     
                     // Perform initial sync after authorization
                     let historyManager = StatsHistoryManager.shared
                     self.importAllHealthData(historyManager: historyManager) { _ in
                         print("✅ Initial sync completed after authorization")
-                        // After importing data, sync any existing manual entries
-                        historyManager.syncManualEntriesToHealthKit()
+                        
+                        // Sync Apple Health entries to backend
+                        historyManager.syncAppleHealthEntriesToBackend()
+                        
+                        // After importing data, sync any existing manual entries only if write access is available
+                        if self.isWriteAuthorized {
+                            historyManager.syncManualEntriesToHealthKit()
+                        } else {
+                            print("⚠️ Write access not available - manual entries will not be synced to HealthKit")
+                        }
                     }
                 } else {
                     print("❌ HealthKit authorization denied")
@@ -156,45 +195,33 @@ class HealthManager: ObservableObject {
         }
         
         var successCount = 0
-        let totalOperations = 4  // Updated to include waist
+        let totalOperations = 4
+        var completedOperations = 0
         
-        importWeightHistory(historyManager: historyManager) { success in
-            if success { successCount += 1 }
-            checkCompletion()
-        }
-        
-        importHeightHistory(historyManager: historyManager) { success in
-            if success { successCount += 1 }
-            checkCompletion()
-        }
-        
-        importBodyFatHistory(historyManager: historyManager) { success in
-            if success { successCount += 1 }
-            checkCompletion()
-        }
-        
-        importWaistHistory(historyManager: historyManager) { success in
-            if success { successCount += 1 }
-            checkCompletion()
-        }
-        
-        func checkCompletion() {
-            DispatchQueue.main.async {
-                if successCount == totalOperations {
-                    self.fetchingStatus = "All data imported successfully!"
-                    // Force UI refresh by updating timestamp
-                    self.lastUpdateTimestamp = Date()
-                    historyManager.triggerUpdate()
-                    completion(true)
-                } else if successCount + (totalOperations - successCount) == totalOperations {
-                    self.fetchingStatus = "Partial data import: \(successCount)/\(totalOperations) successful"
-                    // Force UI refresh by updating timestamp
+        func checkCompletion(success: Bool) {
+            completedOperations += 1
+            if success {
+                successCount += 1
+            }
+            
+            if completedOperations == totalOperations {
+                DispatchQueue.main.async {
+                    if successCount == totalOperations {
+                        self.fetchingStatus = "All data imported successfully!"
+                    } else {
+                        self.fetchingStatus = "Partial data import: \(successCount)/\(totalOperations) successful"
+                    }
                     self.lastUpdateTimestamp = Date()
                     historyManager.triggerUpdate()
                     completion(successCount > 0)
                 }
             }
         }
+        
+        importWeightHistory(historyManager: historyManager, completion: checkCompletion)
+        importHeightHistory(historyManager: historyManager, completion: checkCompletion)
+        importBodyFatHistory(historyManager: historyManager, completion: checkCompletion)
+        importWaistHistory(historyManager: historyManager, completion: checkCompletion)
     }
     
     // Import all weight data from HealthKit
@@ -237,7 +264,6 @@ class HealthManager: ObservableObject {
                 }
                 
                 DispatchQueue.main.async {
-                    print("Fetched \(samples.count) weight samples")
                     self.fetchingStatus = "Fetched \(samples.count) weight samples"
                     self.syncWithHealthKit(historyManager: historyManager, type: .weight, samples: samples, completion: completion)
                 }
@@ -287,7 +313,6 @@ class HealthManager: ObservableObject {
                 }
                 
                 DispatchQueue.main.async {
-                    print("Fetched \(samples.count) height samples")
                     self.fetchingStatus = "Fetched \(samples.count) height samples"
                     self.syncWithHealthKit(historyManager: historyManager, type: .height, samples: samples, completion: completion)
                 }
@@ -336,7 +361,6 @@ class HealthManager: ObservableObject {
             }
             
             DispatchQueue.main.async {
-                print("Fetched \(samples.count) body fat samples")
                 self.fetchingStatus = "Fetched \(samples.count) body fat samples"
                 self.syncWithHealthKit(historyManager: historyManager, type: .bodyFat, samples: samples, completion: completion)
             }
@@ -384,7 +408,6 @@ class HealthManager: ObservableObject {
             }
             
             DispatchQueue.main.async {
-                print("Fetched \(samples.count) waist samples")
                 self.fetchingStatus = "Fetched \(samples.count) waist samples"
                 self.syncWithHealthKit(historyManager: historyManager, type: .waist, samples: samples, completion: completion)
             }
@@ -420,70 +443,70 @@ class HealthManager: ObservableObject {
         }
         
         // Add or update entries from HealthKit
+        var newEntries: [StatEntry] = []
         var addedCount = 0
+        var skippedCount = 0
+        
         for sample in samples {
-            // Skip if the sample came from our app
             if let metadata = sample.metadata,
                let source = metadata["source"] as? String,
                source == "LifeTrackerX" {
-                print("⏭️ Skipping sample that originated from LifeTrackerX")
+                skippedCount += 1
                 continue
             }
             
-            // Convert the sample to a StatEntry
             let entry: StatEntry
             switch type {
             case .weight:
                 let weightInKg = sample.quantity.doubleValue(for: HKUnit.gramUnit(with: .kilo))
-                entry = StatEntry(
-                    date: sample.startDate,
-                    value: weightInKg,
-                    type: .weight,
-                    source: .appleHealth
-                )
+                entry = StatEntry(date: sample.startDate, value: weightInKg, type: .weight, source: .appleHealth)
             case .height:
                 let heightInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
-                entry = StatEntry(
-                    date: sample.startDate,
-                    value: heightInCm,
-                    type: .height,
-                    source: .appleHealth
-                )
+                entry = StatEntry(date: sample.startDate, value: heightInCm, type: .height, source: .appleHealth)
             case .bodyFat:
                 let bodyFatDecimal = sample.quantity.doubleValue(for: HKUnit.percent())
                 let bodyFatPercentage = bodyFatDecimal * 100.0
-                entry = StatEntry(
-                    date: sample.startDate,
-                    value: bodyFatPercentage,
-                    type: .bodyFat,
-                    source: .appleHealth
-                )
+                entry = StatEntry(date: sample.startDate, value: bodyFatPercentage, type: .bodyFat, source: .appleHealth)
             case .waist:
                 let waistInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
-                entry = StatEntry(
-                    date: sample.startDate,
-                    value: waistInCm,
-                    type: .waist,
-                    source: .appleHealth
-                )
+                entry = StatEntry(date: sample.startDate, value: waistInCm, type: .waist, source: .appleHealth)
             default:
                 continue
             }
             
-            // Store the HealthKit sample UUID
-            healthKitSampleMap[entry.id] = sample.uuid.uuidString
+            let existingEntry = existingEntries.first { existing in
+                Calendar.current.isDate(existing.date, inSameDayAs: entry.date) &&
+                existing.type == entry.type &&
+                existing.source == entry.source
+            }
             
-            // Add or update the entry (this will automatically sync to backend)
-            historyManager.addEntry(entry)
+            if existingEntry != nil {
+                skippedCount += 1
+                continue
+            }
+            
+            healthKitSampleMap[entry.id] = sample.uuid.uuidString
+            newEntries.append(entry)
             addedCount += 1
         }
         
-        print("📊 Sync completed for \(type): Added/Updated \(addedCount) entries, Deleted \(entriesToDelete.count) entries")
+        if !newEntries.isEmpty {
+            historyManager.addEntries(newEntries)
+        }
+        
+        print("📊 Sync completed for \(type): Added \(addedCount) entries, Skipped \(skippedCount) duplicates, Deleted \(entriesToDelete.count) entries")
         completion(true)
     }
     
     // Function to save a manual entry to HealthKit
     func saveToHealthKit(_ entry: StatEntry, completion: @escaping (Bool, Error?) -> Void) {
+        // Check if we have write authorization
+        guard isWriteAuthorized else {
+            print("❌ Not authorized to write to HealthKit - write access denied")
+            completion(false, nil)
+            return
+        }
+        
         var quantityType: HKQuantityType?
         var unit: HKUnit
         var value = entry.value // Default to the original value
@@ -551,6 +574,13 @@ class HealthManager: ObservableObject {
     
     // Function to delete entries from HealthKit
     func deleteFromHealthKit(_ entry: StatEntry, completion: @escaping (Bool, Error?) -> Void) {
+        // Check if we have write authorization
+        guard isWriteAuthorized else {
+            print("❌ Not authorized to delete from HealthKit - write access denied")
+            completion(false, nil)
+            return
+        }
+        
         var quantityType: HKQuantityType?
         
         switch entry.type {

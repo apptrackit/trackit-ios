@@ -29,7 +29,7 @@ struct ComparisonCard: View {
                 Text("Comparison")
                     .font(.title3)
                     .fontWeight(.bold)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
             }
             .padding(.horizontal, 8)
             .padding(.top, 10)
@@ -70,7 +70,7 @@ struct ComparisonCard: View {
                             if let photo = leftPhoto {
                                 Text(formatDate(photo.date))
                                     .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                                     .lineLimit(1)
                                     .padding(.top, 2)
                             }
@@ -121,7 +121,7 @@ struct ComparisonCard: View {
                             if let photo = rightPhoto {
                                 Text(formatDate(photo.date))
                                     .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.primary)
                                     .lineLimit(1)
                                     .padding(.top, 2)
                             }
@@ -156,7 +156,7 @@ struct ComparisonCard: View {
                 .padding(.top, 4)
             }
         }
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        .background(Color(.secondarySystemBackground))
         .cornerRadius(14)
         .padding(.horizontal, 4)
         .onAppear {
@@ -228,7 +228,7 @@ struct CategoryBadge: View {
     var body: some View {
         Image(systemName: category.iconName)
             .font(.system(size: 12))
-            .foregroundColor(.white)
+            .foregroundColor(.primary)
             .padding(6)
             .background(Color.black.opacity(0.6))
             .cornerRadius(4)
@@ -284,7 +284,7 @@ struct PhotoSelectorView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                Color.black.edgesIgnoringSafeArea(.all)
+                Color(.systemBackground).edgesIgnoringSafeArea(.all)
                 
                 VStack(spacing: 12) {
                     // Sort options
@@ -425,7 +425,7 @@ struct DateSortedPhotosView: View {
                 HStack {
                     Text(month)
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.leading)
                         .padding(.top, 8)
@@ -576,7 +576,7 @@ struct MeasurementSortedPhotosView: View {
                 HStack {
                     Text(group.range)
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.leading)
                         .padding(.top, 8)
@@ -750,7 +750,7 @@ struct SinglePhotoCard: View {
                 Text(photo.primaryCategory.name)
                     .font(.title3)
                     .fontWeight(.bold)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
                 
                 if photo.categories.count > 1 {
                     Text("+\(photo.categories.count - 1)")
@@ -802,7 +802,7 @@ struct SinglePhotoCard: View {
             )
             .padding(10)
         }
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        .background(Color(.secondarySystemBackground))
         .cornerRadius(14)
         .padding(.horizontal, 4)
     }
@@ -903,6 +903,8 @@ struct MeasurementComparisonRow: View {
     let type: StatType
     let oldValue: Double?
     let newValue: Double?
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     private var hasChange: Bool {
         guard let old = oldValue, let new = newValue else { return false }
@@ -985,12 +987,19 @@ struct MeasurementComparisonRow: View {
         let formatter = NumberFormatter()
         formatter.minimumFractionDigits = 1
         formatter.maximumFractionDigits = 1
+        var display = value
+        let lengthTypes: [StatType] = [.height, .waist, .bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm]
+        if type == .weight {
+            if preferredWeightUnit == "lb" { display = value * 2.20462262 }
+        } else if lengthTypes.contains(type) {
+            if preferredLengthUnit == "in" { display = value / 2.54 }
+        }
         
-        if let formattedValue = formatter.string(from: NSNumber(value: value)) {
+        if let formattedValue = formatter.string(from: NSNumber(value: display)) {
             return "\(formattedValue)"
         }
         
-        return "\(value)"
+        return "\(display)"
     }
     
     private func formatChange(_ change: Double, type: StatType) -> String {
@@ -1010,6 +1019,8 @@ struct MeasurementComparisonRow: View {
 struct MeasurementDetailView: View {
     let photo: ProgressPhoto
     let historyManager: StatsHistoryManager
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     private var measurements: [StatType: StatEntry] {
         var result: [StatType: StatEntry] = [:]
@@ -1095,10 +1106,19 @@ struct MeasurementDetailView: View {
         formatter.minimumFractionDigits = 1
         formatter.maximumFractionDigits = 1
         
-        if let formattedValue = formatter.string(from: NSNumber(value: value)) {
-            return "\(formattedValue) \(type.unit)"
+        var display = value
+        var unit = type.unit
+        let lengthTypes: [StatType] = [.height, .waist, .bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm]
+        if type == .weight {
+            if preferredWeightUnit == "lb" { display = value * 2.20462262; unit = "lb" } else { unit = "kg" }
+        } else if lengthTypes.contains(type) {
+            if preferredLengthUnit == "in" { display = value / 2.54; unit = "in" } else { unit = "cm" }
         }
         
-        return "\(value) \(type.unit)"
+        if let formattedValue = formatter.string(from: NSNumber(value: display)) {
+            return "\(formattedValue) \(unit)"
+        }
+        
+        return "\(display) \(unit)"
     }
 } 

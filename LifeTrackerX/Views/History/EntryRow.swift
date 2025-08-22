@@ -4,6 +4,8 @@ struct EntryRow: View {
     let entry: StatEntry
     let statType: StatType
     let onEdit: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     var body: some View {
         HStack {
@@ -12,7 +14,7 @@ struct EntryRow: View {
                 // Different icon based on data source
                 if entry.source == .appleHealth {
                     // Apple Health icon
-                    Image("applehealthdark")
+                    Image(colorScheme == .dark ? "applehealthdark" : "applehealth")
                         .resizable()
                         .scaledToFit()
                         .frame(width: 20, height: 20)
@@ -26,15 +28,16 @@ struct EntryRow: View {
                         .foregroundColor(.blue)
                 }
                 
-                let formattedValue = entry.value.truncatingRemainder(dividingBy: 1) == 0 ?
-                    String(format: "%.0f", entry.value) :
-                    String(format: "%.1f", entry.value)
+                let displayValue: Double = (statType == .weight && preferredWeightUnit == "lb") ? entry.value * 2.20462262 : entry.value
+                let formattedValue = displayValue.truncatingRemainder(dividingBy: 1) == 0 ?
+                    String(format: "%.0f", displayValue) :
+                    String(format: "%.1f", displayValue)
                     .replacingOccurrences(of: ".", with: ",")
                 
                 Text(formattedValue)
                     .font(.title3)
                     .fontWeight(.medium)
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
             }
             
             Spacer()
@@ -55,7 +58,6 @@ struct EntryRow: View {
         }
         .padding(.vertical, 12)
         .padding(.horizontal)
-        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
     }
     
     func formatDate(_ date: Date) -> String {
