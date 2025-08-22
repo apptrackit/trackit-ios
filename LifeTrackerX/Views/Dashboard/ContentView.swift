@@ -12,6 +12,8 @@ struct DashboardView: View {
     @State private var isRefreshing = false
     @EnvironmentObject var authViewModel: AuthViewModel
     @AppStorage("selectedTheme") private var selectedTheme: String = "system"
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     // Computed properties to get latest values or nil
     private var weight: Double? {
@@ -33,6 +35,20 @@ struct DashboardView: View {
         }
         return nil
     }
+    
+    private var displayWeight: Double? {
+        guard let weight else { return nil }
+        return preferredWeightUnit == "lb" ? weight * 2.20462262 : weight
+    }
+    
+    private var displayWeightUnit: String { preferredWeightUnit == "lb" ? "lb" : "kg" }
+    
+    private var displayHeight: Double? {
+        guard let height else { return nil }
+        return preferredLengthUnit == "in" ? height / 2.54 : height
+    }
+    
+    private var displayHeightUnit: String { preferredLengthUnit == "in" ? "in" : "cm" }
     
     private var recentMeasurements: [StatEntry] {
         let types: [StatType] = [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder, .glutes]
@@ -80,8 +96,8 @@ struct DashboardView: View {
                             // Weight Card
                             SummaryCard(
                                 title: "Weight",
-                                value: weight,
-                                unit: "kg",
+                                value: displayWeight,
+                                unit: displayWeightUnit,
                                 icon: "scalemass.fill",
                                 color: .blue
                             )
@@ -109,8 +125,8 @@ struct DashboardView: View {
                             // Height Card
                             SummaryCard(
                                 title: "Height",
-                                value: height,
-                                unit: "cm",
+                                value: displayHeight,
+                                unit: displayHeightUnit,
                                 icon: "ruler.fill",
                                 color: .purple
                             )
@@ -138,11 +154,11 @@ struct DashboardView: View {
                         }
                         
                         // Weight Progress Chart
-                        if let weight = weight {
+                        if let weight = displayWeight {
                             ProgressChartView(
                                 title: "Weight Trend",
                                 value: weight,
-                                unit: "kg",
+                                unit: displayWeightUnit,
                                 historyManager: historyManager,
                                 statType: .weight,
                                 timeFrame: selectedTimeFrame
@@ -346,6 +362,8 @@ struct ProgressChartView: View {
     let historyManager: StatsHistoryManager
     let statType: StatType
     let timeFrame: TimeFrame
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     private var allEntries: [StatEntry] {
         historyManager.getEntries(for: statType).sorted { $0.date < $1.date }
@@ -391,7 +409,7 @@ struct ProgressChartView: View {
     private var yAxisRange: ClosedRange<Double> {
         guard !chartData.isEmpty else { return 0...100 }
         
-        let values = chartData.map { $0.value }
+        let values = chartData.map { convertValue($0.value) }
         let min = values.min() ?? 0
         let max = values.max() ?? 100
         
@@ -544,7 +562,7 @@ struct ProgressChartView: View {
                     ForEach(chartData) { entry in
                         LineMark(
                             x: .value("Date", entry.date),
-                            y: .value("Value", entry.value)
+                            y: .value("Value", convertValue(entry.value))
                         )
                         .foregroundStyle(chartColor.gradient)
                         .interpolationMethod(.catmullRom)
@@ -553,7 +571,7 @@ struct ProgressChartView: View {
                         if shouldShowDots {
                             PointMark(
                                 x: .value("Date", entry.date),
-                                y: .value("Value", entry.value)
+                                y: .value("Value", convertValue(entry.value))
                             )
                             .foregroundStyle(chartColor)
                             .symbolSize(20)
@@ -601,10 +619,31 @@ struct ProgressChartView: View {
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
+    
+    private var isLengthType: Bool {
+        switch statType {
+        case .height, .waist, .bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    private func convertValue(_ value: Double) -> Double {
+        if statType == .weight {
+            return value * (preferredWeightUnit == "lb" ? 2.20462262 : 1.0)
+        }
+        if isLengthType {
+            return value * (preferredLengthUnit == "in" ? (1.0/2.54) : 1.0)
+        }
+        return value
+    }
 }
 
 struct RecentMeasurementRow: View {
     let entry: StatEntry
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     var body: some View {
         HStack {
@@ -624,13 +663,24 @@ struct RecentMeasurementRow: View {
             
             Spacer()
             
-            Text("\(String(format: "%.1f", entry.value)) \(entry.type.unit)")
+            Text(formattedValue(entry))
                 .font(.headline)
                 .foregroundColor(.primary)
         }
         .padding()
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+    
+    private func formattedValue(_ entry: StatEntry) -> String {
+        if entry.type == .weight {
+            let value = preferredWeightUnit == "lb" ? entry.value * 2.20462262 : entry.value
+            return "\(String(format: "%.1f", value)) \(preferredWeightUnit == "lb" ? "lb" : "kg")"
+        } else if entry.type == .height {
+            let value = preferredLengthUnit == "in" ? entry.value / 2.54 : entry.value
+            return "\(String(format: "%.1f", value)) \(preferredLengthUnit == "in" ? "in" : "cm")"
+        }
+        return "\(String(format: "%.1f", entry.value)) \(entry.type.unit)"
     }
 }
 

@@ -776,6 +776,8 @@ struct CategorySelectorButton: View {
 struct MeasurementSummaryView: View {
     let date: Date
     @ObservedObject var historyManager: StatsHistoryManager
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     private var measurements: [StatType: Double] {
         var result: [StatType: Double] = [:]
@@ -838,11 +840,20 @@ struct MeasurementSummaryView: View {
         formatter.minimumFractionDigits = 1
         formatter.maximumFractionDigits = 1
         
-        if let formattedValue = formatter.string(from: NSNumber(value: value)) {
-            return "\(formattedValue) \(type.unit)"
+        var display = value
+        var unit = type.unit
+        let lengthTypes: [StatType] = [.height, .waist, .bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm]
+        if type == .weight {
+            if preferredWeightUnit == "lb" { display = value * 2.20462262; unit = "lb" } else { unit = "kg" }
+        } else if lengthTypes.contains(type) {
+            if preferredLengthUnit == "in" { display = value / 2.54; unit = "in" } else { unit = "cm" }
         }
         
-        return "\(value) \(type.unit)"
+        if let formattedValue = formatter.string(from: NSNumber(value: display)) {
+            return "\(formattedValue) \(unit)"
+        }
+        
+        return "\(display) \(unit)"
     }
 }
 

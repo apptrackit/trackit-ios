@@ -5,6 +5,7 @@ struct EntryRow: View {
     let statType: StatType
     let onEdit: () -> Void
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     var body: some View {
         HStack {
@@ -27,9 +28,10 @@ struct EntryRow: View {
                         .foregroundColor(.blue)
                 }
                 
-                let formattedValue = entry.value.truncatingRemainder(dividingBy: 1) == 0 ?
-                    String(format: "%.0f", entry.value) :
-                    String(format: "%.1f", entry.value)
+                let displayValue: Double = (statType == .weight && preferredWeightUnit == "lb") ? entry.value * 2.20462262 : entry.value
+                let formattedValue = displayValue.truncatingRemainder(dividingBy: 1) == 0 ?
+                    String(format: "%.0f", displayValue) :
+                    String(format: "%.1f", displayValue)
                     .replacingOccurrences(of: ".", with: ",")
                 
                 Text(formattedValue)

@@ -10,6 +10,8 @@ struct AddEntryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showAlert = false
     @FocusState private var isValueFieldFocused: Bool
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
+    @AppStorage("preferredLengthUnit") private var preferredLengthUnit: String = "cm"
     
     private var canSave: Bool {
         !value.isEmpty && Double(value.replacingOccurrences(of: ",", with: ".")) != nil
@@ -112,7 +114,7 @@ struct AddEntryView: View {
                             
                             // Value Field
                             HStack {
-                                Text(statType.unit)
+                                Text(unitLabel)
                                     .foregroundColor(.primary)
                                 Spacer()
                                 TextField("", text: $value)
@@ -174,11 +176,31 @@ struct AddEntryView: View {
     private func saveEntry() {
         guard let valueDouble = Double(value.replacingOccurrences(of: ",", with: ".")) else { return }
         if date <= Date() {
-            let entry = StatEntry(date: date, value: valueDouble, type: statType)
+            // Convert to kg for storage if needed
+            let storedValue: Double
+            if statType == .weight {
+                storedValue = (preferredWeightUnit == "lb") ? (valueDouble / 2.20462262) : valueDouble
+            } else if statType == .height {
+                storedValue = (preferredLengthUnit == "in") ? (valueDouble * 2.54) : valueDouble
+            } else {
+                storedValue = valueDouble
+            }
+            let entry = StatEntry(date: date, value: storedValue, type: statType)
             historyManager.addEntry(entry)
             dismiss()
         } else {
             showAlert = true
+        }
+    }
+    
+    private var unitLabel: String {
+        switch statType {
+        case .weight:
+            return preferredWeightUnit == "lb" ? "lb" : "kg"
+        case .height:
+            return preferredLengthUnit == "in" ? "in" : "cm"
+        default:
+            return statType.unit
         }
     }
 } 
