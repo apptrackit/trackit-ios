@@ -12,6 +12,7 @@ struct DashboardView: View {
     @State private var isRefreshing = false
     @EnvironmentObject var authViewModel: AuthViewModel
     @AppStorage("selectedTheme") private var selectedTheme: String = "system"
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     // Computed properties to get latest values or nil
     private var weight: Double? {
@@ -33,6 +34,13 @@ struct DashboardView: View {
         }
         return nil
     }
+    
+    private var displayWeight: Double? {
+        guard let weight else { return nil }
+        return preferredWeightUnit == "lb" ? weight * 2.20462262 : weight
+    }
+    
+    private var displayWeightUnit: String { preferredWeightUnit == "lb" ? "lb" : "kg" }
     
     private var recentMeasurements: [StatEntry] {
         let types: [StatType] = [.weight, .bodyFat, .bicep, .chest, .waist, .thigh, .shoulder, .glutes]
@@ -80,8 +88,8 @@ struct DashboardView: View {
                             // Weight Card
                             SummaryCard(
                                 title: "Weight",
-                                value: weight,
-                                unit: "kg",
+                                value: displayWeight,
+                                unit: displayWeightUnit,
                                 icon: "scalemass.fill",
                                 color: .blue
                             )
@@ -138,11 +146,11 @@ struct DashboardView: View {
                         }
                         
                         // Weight Progress Chart
-                        if let weight = weight {
+                        if let weight = displayWeight {
                             ProgressChartView(
                                 title: "Weight Trend",
                                 value: weight,
-                                unit: "kg",
+                                unit: displayWeightUnit,
                                 historyManager: historyManager,
                                 statType: .weight,
                                 timeFrame: selectedTimeFrame
@@ -605,6 +613,7 @@ struct ProgressChartView: View {
 
 struct RecentMeasurementRow: View {
     let entry: StatEntry
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     var body: some View {
         HStack {
@@ -624,13 +633,21 @@ struct RecentMeasurementRow: View {
             
             Spacer()
             
-            Text("\(String(format: "%.1f", entry.value)) \(entry.type.unit)")
+            Text(formattedValue(entry))
                 .font(.headline)
                 .foregroundColor(.primary)
         }
         .padding()
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+    
+    private func formattedValue(_ entry: StatEntry) -> String {
+        if entry.type == .weight {
+            let value = preferredWeightUnit == "lb" ? entry.value * 2.20462262 : entry.value
+            return "\(String(format: "%.1f", value)) \(preferredWeightUnit == "lb" ? "lb" : "kg")"
+        }
+        return "\(String(format: "%.1f", entry.value)) \(entry.type.unit)"
     }
 }
 

@@ -94,6 +94,7 @@ struct HistoryPhotoThumbnail: View {
     let photo: ProgressPhoto
     @ObservedObject var historyManager: StatsHistoryManager
     let action: () -> Void
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     private var weight: Double? {
         historyManager.getEntries(for: .weight)
@@ -138,7 +139,9 @@ struct HistoryPhotoThumbnail: View {
                     }
                     
                     if let weight = weight {
-                        Text("\(String(format: "%.1f", weight)) kg")
+                        let value = preferredWeightUnit == "lb" ? weight * 2.20462262 : weight
+                        let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
+                        Text("\(String(format: "%.1f", value)) \(unit)")
                             .font(.subheadline)
                             .fontWeight(.semibold)
                             .foregroundColor(.primary)

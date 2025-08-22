@@ -8,6 +8,7 @@ struct EditEntryView: View {
     @State private var showingDatePicker = false
     @State private var showingTimePicker = false
     @FocusState private var isValueFieldFocused: Bool
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     init(historyManager: StatsHistoryManager, entry: StatEntry) {
         self.historyManager = historyManager
@@ -115,7 +116,7 @@ struct EditEntryView: View {
                             
                             // Value Field
                             HStack {
-                                Text(entry.type.unit)
+                                Text(entry.type == .weight ? (preferredWeightUnit == "lb" ? "lb" : "kg") : entry.type.unit)
                                     .foregroundColor(.primary)
                                 Spacer()
                                 TextField("", value: $entry.value, formatter: NumberFormatter())
@@ -176,7 +177,11 @@ struct EditEntryView: View {
     
     private func saveEntry() {
         if entry.date <= Date() {
-            historyManager.updateEntry(entry)
+            var updated = entry
+            if entry.type == .weight && preferredWeightUnit == "lb" {
+                updated.value = entry.value / 2.20462262
+            }
+            historyManager.updateEntry(updated)
             dismiss()
         } else {
             showAlert = true

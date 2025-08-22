@@ -5,6 +5,7 @@ struct HistoryGraphView: View {
     @ObservedObject var historyManager: StatsHistoryManager
     let statType: StatType
     @Binding var selectedTimeFrame: TimeFrame
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     var filteredData: [StatEntry] {
         let calendar = Calendar.current
@@ -41,6 +42,17 @@ struct HistoryGraphView: View {
         filteredData.last?.value ?? 0.0
     }
     
+    private var displayCurrentValue: Double {
+        if statType == .weight {
+            return (filteredData.last?.value ?? 0.0) * (preferredWeightUnit == "lb" ? 2.20462262 : 1.0)
+        }
+        return currentValue
+    }
+    
+    private var unitString: String {
+        statType == .weight ? (preferredWeightUnit == "lb" ? "lb" : "kg") : statType.unit
+    }
+    
     var body: some View {
         VStack {
             Picker("Time Frame", selection: $selectedTimeFrame) {
@@ -53,8 +65,8 @@ struct HistoryGraphView: View {
             
             ProgressChartView(
                 title: statType.title,
-                value: currentValue,
-                unit: statType.unit,
+                value: displayCurrentValue,
+                unit: unitString,
                 historyManager: historyManager,
                 statType: statType,
                 timeFrame: selectedTimeFrame

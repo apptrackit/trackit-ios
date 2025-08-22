@@ -10,6 +10,7 @@ struct AddEntryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showAlert = false
     @FocusState private var isValueFieldFocused: Bool
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     private var canSave: Bool {
         !value.isEmpty && Double(value.replacingOccurrences(of: ",", with: ".")) != nil
@@ -112,7 +113,7 @@ struct AddEntryView: View {
                             
                             // Value Field
                             HStack {
-                                Text(statType.unit)
+                                Text(statType == .weight ? (preferredWeightUnit == "lb" ? "lb" : "kg") : statType.unit)
                                     .foregroundColor(.primary)
                                 Spacer()
                                 TextField("", text: $value)
@@ -174,7 +175,9 @@ struct AddEntryView: View {
     private func saveEntry() {
         guard let valueDouble = Double(value.replacingOccurrences(of: ",", with: ".")) else { return }
         if date <= Date() {
-            let entry = StatEntry(date: date, value: valueDouble, type: statType)
+            // Convert to kg for storage if needed
+            let storedValue = (statType == .weight && preferredWeightUnit == "lb") ? (valueDouble / 2.20462262) : valueDouble
+            let entry = StatEntry(date: date, value: storedValue, type: statType)
             historyManager.addEntry(entry)
             dismiss()
         } else {

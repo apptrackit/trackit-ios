@@ -10,6 +10,7 @@ struct TrackDataView: View {
     @State private var showingTimePicker = false
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isValueFieldFocused: Bool
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     private var canSave: Bool {
         !value.isEmpty && Double(value.replacingOccurrences(of: ",", with: ".")) != nil
@@ -127,7 +128,7 @@ struct TrackDataView: View {
                             
                             // Value Field
                             HStack {
-                                Text(selectedType.unit)
+                                Text(selectedType == .weight ? (preferredWeightUnit == "lb" ? "lb" : "kg") : selectedType.unit)
                                     .foregroundColor(.primary)
                                 Spacer()
                                 TextField("", text: $value)
@@ -185,7 +186,8 @@ struct TrackDataView: View {
     
     private func saveEntry() {
         guard let valueDouble = Double(value.replacingOccurrences(of: ",", with: ".")) else { return }
-        let entry = StatEntry(date: date, value: valueDouble, type: selectedType)
+        let storedValue = (selectedType == .weight && preferredWeightUnit == "lb") ? (valueDouble / 2.20462262) : valueDouble
+        let entry = StatEntry(date: date, value: storedValue, type: selectedType)
         historyManager.addEntry(entry)
         dismiss()
     }

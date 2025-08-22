@@ -6,6 +6,7 @@ struct GridView: View {
     let bmi: Double?
     let bodyFat: Double?
     @ObservedObject var historyManager: StatsHistoryManager
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     private var formattedBMI: String {
         if let bmi = bmi {
@@ -21,7 +22,7 @@ struct GridView: View {
         VStack {
             HStack {
                 StatCard(title: "Weight",
-                         value: weight != nil ? (weight!.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f kg", weight!) : String(format: "%.1f kg", weight!)) : "No data",
+                         value: weight != nil ? formattedWeight(weight!) : "No data",
                          statType: .weight,
                          historyManager: historyManager)
                 
@@ -54,5 +55,13 @@ struct GridView: View {
                 print("📊 BMI: \(entry.value) on \(entry.date)")
             }
         }
+    }
+}
+
+private extension GridView {
+    func formattedWeight(_ kg: Double) -> String {
+        let value = preferredWeightUnit == "lb" ? kg * 2.20462262 : kg
+        let number = value.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", value) : String(format: "%.1f", value)
+        return "\(number) \(preferredWeightUnit == "lb" ? "lb" : "kg")"
     }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 struct BMIRow: View {
     let entry: StatEntry
     @ObservedObject var historyManager: StatsHistoryManager
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     private var weightAndHeight: (weight: Double, height: Double)? {
         let weightEntry = historyManager.getEntries(for: .weight)
@@ -34,24 +35,34 @@ struct BMIRow: View {
         switch entry.type {
         case .bmi:
             if let data = weightAndHeight {
-                return "W: \(String(format: "%.1f", data.weight)) kg, H: \(String(format: "%.1f", data.height)) cm"
+                let w = preferredWeightUnit == "lb" ? data.weight * 2.20462262 : data.weight
+                let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
+                return "W: \(String(format: "%.1f", w)) \(unit), H: \(String(format: "%.1f", data.height)) cm"
             }
         case .lbm, .fm:
             if let data = weightAndHeight, let bf = bodyFat {
-                return "W: \(String(format: "%.1f", data.weight)) kg, BF: \(String(format: "%.1f", bf))%"
+                let w = preferredWeightUnit == "lb" ? data.weight * 2.20462262 : data.weight
+                let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
+                return "W: \(String(format: "%.1f", w)) \(unit), BF: \(String(format: "%.1f", bf))%"
             }
         case .ffmi:
             if let data = weightAndHeight, let bf = bodyFat {
-                return "W: \(String(format: "%.1f", data.weight)) kg, H: \(String(format: "%.1f", data.height)) cm, BF: \(String(format: "%.1f", bf))%"
+                let w = preferredWeightUnit == "lb" ? data.weight * 2.20462262 : data.weight
+                let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
+                return "W: \(String(format: "%.1f", w)) \(unit), H: \(String(format: "%.1f", data.height)) cm, BF: \(String(format: "%.1f", bf))%"
             }
         case .bmr:
             if let data = weightAndHeight, let bf = bodyFat {
                 let lbm = data.weight * (1 - bf / 100)
-                return "LBM: \(String(format: "%.1f", lbm)) kg"
+                let display = preferredWeightUnit == "lb" ? lbm * 2.20462262 : lbm
+                let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
+                return "LBM: \(String(format: "%.1f", display)) \(unit)"
             }
         case .bsa:
             if let data = weightAndHeight {
-                return "W: \(String(format: "%.1f", data.weight)) kg, H: \(String(format: "%.1f", data.height)) cm"
+                let w = preferredWeightUnit == "lb" ? data.weight * 2.20462262 : data.weight
+                let unit = preferredWeightUnit == "lb" ? "lb" : "kg"
+                return "W: \(String(format: "%.1f", w)) \(unit), H: \(String(format: "%.1f", data.height)) cm"
             }
         default:
             return ""

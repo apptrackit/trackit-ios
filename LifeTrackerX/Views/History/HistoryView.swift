@@ -31,6 +31,7 @@ struct HistoryView: View {
     @AppStorage("selectedTheme") private var selectedTheme: String = "system"
     @State private var selectedTimeFrame: TimeFrame = .weekly
     @State private var isEditMode = false
+    @AppStorage("preferredWeightUnit") private var preferredWeightUnit: String = "kg"
     
     var entries: [StatEntry] {
         historyManager.getEntries(for: statType)
@@ -120,7 +121,7 @@ struct HistoryView: View {
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
                             // Metric type label on top left
-                            Text(statType.unit)
+                            Text(statType == .weight ? (preferredWeightUnit == "lb" ? "lb" : "kg") : statType.unit)
                                 .font(.subheadline)
                                 .foregroundColor(.gray)
                                 .padding(.horizontal)
