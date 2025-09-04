@@ -54,7 +54,9 @@ class MetricSyncManager: ObservableObject {
     // MARK: - Periodic Sync
     private func setupPeriodicSync() {
         syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) { [weak self] _ in
-            self?.processPendingOperations()
+            Task { @MainActor in
+                await self?.processPendingOperations()
+            }
         }
     }
     
@@ -66,7 +68,7 @@ class MetricSyncManager: ObservableObject {
             existing.statType == operation.statType &&
             existing.date == operation.date &&
             existing.value == operation.value &&
-            existing.isAppleHealth == operation.isAppleHealth
+            existing.source == operation.source
         }
         
         if isDuplicate {
@@ -79,11 +81,6 @@ class MetricSyncManager: ObservableObject {
         updatePendingCount()
         
         logger.info("Queued operation: \(operation.operationType.rawValue) for \(operation.statType.rawValue)")
-        
-        // Try to process immediately if online
-        if isOnline {
-            processPendingOperations()
-        }
     }
     
     func removeOperation(_ operation: SyncOperation) {
@@ -108,6 +105,7 @@ class MetricSyncManager: ObservableObject {
             self.syncStatus = .inProgress
         }
         
+        // Make a snapshot to avoid re-entrancy and duplicate processing
         let operationsToProcess = self.pendingOperations.sorted { $0.createdAt < $1.createdAt }
         
         Task { @MainActor in
@@ -131,6 +129,10 @@ class MetricSyncManager: ObservableObject {
             // For create operations, check if the entry already exists on the backend
             if await entryExistsOnBackend(operation) {
                 logger.info("Entry already exists on backend, skipping create: \(operation.statType.rawValue) for \(operation.date)")
+                // Persist backendId if found
+                if let foundId = await getBackendIdForClientUUID(operation.entryId) {
+                    await persistBackendId(clientUUID: operation.entryId, backendId: foundId)
+                }
                 return
             }
             try await createMetric(operation)
@@ -149,11 +151,9 @@ class MetricSyncManager: ObservableObject {
             )
             
             if response.success {
-                let backendTypeId = BackendMetricType.from(operation.statType)?.rawValue
+                // Prefer matching by client_uuid to prevent duplicates
                 let existingEntry = response.entries.first { metric in
-                    metric.metric_type_id == backendTypeId &&
-                    metric.date == Self.dateFormatter.string(from: operation.date) &&
-                    metric.is_apple_health == operation.isAppleHealth
+                    metric.client_uuid == operation.entryId.uuidString
                 }
                 return existingEntry != nil
             }
@@ -172,7 +172,7 @@ class MetricSyncManager: ObservableObject {
                     date: operation.date,
                     value: operation.value,
                     type: operation.statType,
-                    source: operation.isAppleHealth ? .appleHealth : .manual,
+                    source: operation.source,
                     backendId: operation.backendId
                 ),
                 retryCount: operation.retryCount + 1
@@ -195,25 +195,64 @@ class MetricSyncManager: ObservableObject {
             date: operation.date,
             value: operation.value,
             type: operation.statType,
-            source: operation.isAppleHealth ? .appleHealth : .manual
+            source: operation.source,
+            version: operation.version
         )
         
         let request = CreateMetricRequest(entry: entry)
         let requestData = try JSONEncoder().encode(request)
         
-        let response: MetricResponse = try await networkManager.makeAuthenticatedRequest(
-            "/api/metrics",
-            method: "POST",
-            body: requestData
-        )
-        
-        if !response.success {
-            throw NSError(domain: "MetricSync", code: -1, userInfo: [
-                NSLocalizedDescriptionKey: response.error ?? "Unknown error"
-            ])
+        do {
+            let response: MetricResponse = try await networkManager.makeAuthenticatedRequest(
+                "/api/metrics",
+                method: "POST",
+                body: requestData
+            )
+            if !response.success {
+                throw NSError(domain: "MetricSync", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: response.error ?? "Unknown error"
+                ])
+            }
+            // If backend returned an ID, persist it on the local entry
+            if let createdId = response.entryId {
+                await persistBackendId(clientUUID: operation.entryId, backendId: createdId)
+            }
+        } catch {
+            // If server reports duplicate (already created), treat as success
+            // by verifying existence using client_uuid
+            if let foundId = await getBackendIdForClientUUID(operation.entryId) {
+                await persistBackendId(clientUUID: operation.entryId, backendId: foundId)
+                logger.info("Server reported error, but entry exists on backend. Treating as success.")
+            } else {
+                throw error
+            }
         }
         
         logger.info("Successfully created metric: \(operation.statType.rawValue)")
+    }
+
+    // Attempt to find backend ID for a given client UUID by fetching metrics
+    private func getBackendIdForClientUUID(_ clientUUID: UUID) async -> Int? {
+        do {
+            let response: MetricsListResponse = try await networkManager.makeAuthenticatedRequest(
+                "/api/metrics",
+                method: "GET"
+            )
+            if response.success,
+               let match = response.entries.first(where: { $0.client_uuid == clientUUID.uuidString }) {
+                return match.id
+            }
+        } catch {
+            logger.error("Failed to fetch backend ID for client UUID: \(error.localizedDescription)")
+        }
+        return nil
+    }
+
+    // Persist backendId on the matching local entry and save
+    @MainActor
+    private func persistBackendId(clientUUID: UUID, backendId: Int) {
+        let manager = StatsHistoryManager.shared
+        manager.setBackendId(forClientUUID: clientUUID, backendId: backendId)
     }
     
     private func updateMetric(_ operation: SyncOperation) async throws {
@@ -222,14 +261,20 @@ class MetricSyncManager: ObservableObject {
             date: operation.date,
             value: operation.value,
             type: operation.statType,
-            source: operation.isAppleHealth ? .appleHealth : .manual
+            source: operation.source,
+            version: operation.version
         )
         
         let request = UpdateMetricRequest(entry: entry)
         let requestData = try JSONEncoder().encode(request)
         
-        // Use backend ID if available, otherwise use UUID
-        let identifier = entry.backendId?.description ?? operation.entryId.uuidString
+        // Use backend ID for updates, as the URL path expects an integer ID
+        guard let backendId = operation.backendId else {
+            throw NSError(domain: "MetricSync", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "Cannot update entry without backend ID"
+            ])
+        }
+        let identifier = backendId.description
         let response: MetricResponse = try await networkManager.makeAuthenticatedRequest(
             "/api/metrics/\(identifier)",
             method: "PUT",
@@ -246,8 +291,13 @@ class MetricSyncManager: ObservableObject {
     }
     
     private func deleteMetric(_ operation: SyncOperation) async throws {
-        // Use backend ID if available, otherwise use UUID
-        let identifier = operation.backendId?.description ?? operation.entryId.uuidString
+        // Use backend ID for deletes, as the URL path expects an integer ID
+        guard let backendId = operation.backendId else {
+            throw NSError(domain: "MetricSync", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "Cannot delete entry without backend ID"
+            ])
+        }
+        let identifier = backendId.description
         let response: MetricResponse = try await networkManager.makeAuthenticatedRequest(
             "/api/metrics/\(identifier)",
             method: "DELETE"
@@ -277,6 +327,18 @@ class MetricSyncManager: ObservableObject {
                 syncEntry(entry, operation: .create)
             }
         }
+    }
+
+    // MARK: - Bulk Upload (initial/full sync)
+    func bulkUpload(_ entries: [StatEntry]) async throws {
+        let payload = entries.filter { !$0.type.isCalculated }.map { CreateMetricRequest(entry: $0) }
+        let data = try JSONEncoder().encode(payload)
+        let _: MetricResponse = try await networkManager.makeAuthenticatedRequest(
+            "/api/metrics/bulk",
+            method: "POST",
+            body: data
+        )
+        logger.info("Bulk upload completed for \(payload.count) entries")
     }
     
     func forceSync() {
@@ -335,13 +397,19 @@ class MetricSyncManager: ObservableObject {
             ])
         }
         
-        let entries = response.entries.map { metric in
-            StatEntry(
-                id: UUID(), // Generate new UUID for local storage
-                date: Self.dateFormatter.date(from: metric.date) ?? Date(),
-                value: Double(metric.value) ?? 0.0, // Convert string to Double
+        let entries = response.entries.map { metric -> StatEntry in
+            // Parse the source from the server response, default to manual if missing
+            let statSource = StatSource(rawValue: metric.source ?? "manual") ?? .manual
+            
+            let parsedDate = Self.dateFormatter.date(from: metric.date)
+            
+            return StatEntry(
+                id: UUID(uuidString: metric.client_uuid ?? "") ?? UUID(),
+                date: parsedDate ?? Date(),
+                value: metric.value, // Already a Double
                 type: BackendMetricType(rawValue: metric.metric_type_id)?.toStatType() ?? .weight,
-                source: metric.is_apple_health ? .appleHealth : .manual,
+                source: statSource,
+                version: metric.version ?? 1,
                 backendId: metric.id
             )
         }

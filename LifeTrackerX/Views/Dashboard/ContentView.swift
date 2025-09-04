@@ -479,7 +479,6 @@ struct ProgressChartView: View {
     }
     
     private func formatDate(_ date: Date) -> String {
-        let calendar = Calendar.current
         let formatter = DateFormatter()
         formatter.locale = Locale.current
         

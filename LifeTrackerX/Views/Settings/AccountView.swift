@@ -68,7 +68,6 @@ struct AccountView: View {
                             }
                         }
                     }
-                    .disabled(true)
                 }
                 
                 Section(header: Text("Appearance")) {

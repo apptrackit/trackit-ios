@@ -66,7 +66,8 @@ struct SyncOperation: Codable, Identifiable {
     let statType: StatType
     let value: Double
     let date: Date
-    let isAppleHealth: Bool
+    let source: StatSource
+    let version: Int
     let createdAt: Date
     let retryCount: Int
     let backendId: Int?
@@ -78,7 +79,8 @@ struct SyncOperation: Codable, Identifiable {
         self.statType = entry.type
         self.value = entry.value
         self.date = entry.date
-        self.isAppleHealth = entry.source == .appleHealth
+        self.source = entry.source
+        self.version = entry.version
         self.createdAt = Date()
         self.retryCount = retryCount
         self.backendId = entry.backendId
@@ -87,37 +89,66 @@ struct SyncOperation: Codable, Identifiable {
 
 // MARK: - Backend API Models
 struct CreateMetricRequest: Codable {
+    let client_uuid: String
     let metric_type_id: Int
     let value: Double
     let date: String
-    let is_apple_health: Bool
+    let source: String
+    let version: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case client_uuid
+        case metric_type_id
+        case value
+        case date = "entry_date"
+        case source
+        case version
+    }
     
     init(entry: StatEntry) {
+        self.client_uuid = entry.id.uuidString
         self.metric_type_id = BackendMetricType.from(entry.type)?.rawValue ?? 1
         self.value = entry.value
         self.date = Self.dateFormatter.string(from: entry.date)
-        self.is_apple_health = entry.source == .appleHealth
+        self.source = entry.source.rawValue
+        self.version = entry.version
     }
     
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(abbreviation: "UTC")
         return formatter
     }()
 }
 
 struct UpdateMetricRequest: Codable {
+    let client_uuid: String
     let value: Double
     let date: String
+    let source: String
+    let version: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case client_uuid
+        case value
+        case date = "entry_date"
+        case source
+        case version
+    }
     
     init(entry: StatEntry) {
+        self.client_uuid = entry.id.uuidString
         self.value = entry.value
         self.date = Self.dateFormatter.string(from: entry.date)
+        self.source = entry.source.rawValue
+        self.version = entry.version
     }
     
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(abbreviation: "UTC")
         return formatter
     }()
 }
@@ -140,14 +171,30 @@ struct MetricsListResponse: Codable {
 struct MetricData: Codable {
     let id: Int
     let metric_type_id: Int
-    let value: String // Server returns value as string
+    let value: Double // Server returns value as number
     let date: String
-    let is_apple_health: Bool
+    // New fields for client-managed IDs and optimistic locking
+    let client_uuid: String?
+    let version: Int?
+    let source: String?
     
     // Optional fields that might not be present
     let user_id: Int?
     let created_at: String?
     let updated_at: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case metric_type_id
+        case value
+        case date = "entry_date"
+        case client_uuid
+        case version
+        case source
+        case user_id
+        case created_at
+        case updated_at
+    }
 }
 
 // MARK: - Sync Status

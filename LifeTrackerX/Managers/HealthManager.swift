@@ -10,6 +10,16 @@ class HealthManager: ObservableObject {
     @Published var fetchingStatus: String = ""
     // Add this trigger to force view updates
     @Published var lastUpdateTimestamp: Date = Date()
+    // Persisted timestamp of last successful HealthKit sync
+    @Published var lastSyncTimestamp: Date? {
+        didSet {
+            if let ts = lastSyncTimestamp {
+                UserDefaults.standard.set(ts.timeIntervalSince1970, forKey: Self.lastSyncTimestampKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.lastSyncTimestampKey)
+            }
+        }
+    }
     
     // Add a timer for periodic syncing
     private var syncTimer: Timer?
@@ -32,10 +42,18 @@ class HealthManager: ObservableObject {
         HKObjectType.quantityType(forIdentifier: .waistCircumference)!
     ]
     
-    // Add a dictionary to track Apple Health sample UUIDs
+    // Backward-compatibility map for older entries imported before using client UUIDs directly
     private var healthKitSampleMap: [UUID: String] = [:]
+
+    private static let lastSyncTimestampKey = "HealthKitLastSyncTimestamp"
     
     init() {
+        // Load last sync timestamp
+        if let stored = UserDefaults.standard.object(forKey: Self.lastSyncTimestampKey) as? TimeInterval {
+            lastSyncTimestamp = Date(timeIntervalSince1970: stored)
+        } else {
+            lastSyncTimestamp = nil
+        }
         checkHealthDataAvailability()
         setupPeriodicSync()
     }
@@ -134,16 +152,22 @@ class HealthManager: ObservableObject {
                 var allReadAuthorized = true
                 for type in self.typesToRead {
                     let status = self.healthStore.authorizationStatus(for: type)
-                    if status.rawValue == 0 || status.rawValue == 2 { // .notDetermined = 0, .sharingDenied = 2
-                        print("🔑 Post-request read access denied for \(type)")
+                    print("🔑 Read authorization status for \(type): \(status.rawValue) (\(status))")
+                    
+                    // For read permissions, Apple may return .sharingDenied even when access is granted
+                    // to protect user privacy. Only .notDetermined means definitely no access.
+                    if status == .notDetermined {
+                        print("🔑 Post-request read access not determined for \(type)")
                         allReadAuthorized = false
                         break
                     }
+                    // Note: .sharingDenied might still allow reading, so we don't fail on it
                 }
                 
                 var allWriteAuthorized = true
                 for type in self.typesToWrite {
                     let status = self.healthStore.authorizationStatus(for: type)
+                    print("🔑 Write authorization status for \(type): \(status.rawValue) (\(status))")
                     if status != .sharingAuthorized {
                         print("🔑 Post-request write access denied for \(type)")
                         allWriteAuthorized = false
@@ -170,8 +194,7 @@ class HealthManager: ObservableObject {
                     self.importAllHealthData(historyManager: historyManager) { _ in
                         print("✅ Initial sync completed after authorization")
                         
-                        // Sync Apple Health entries to backend
-                        historyManager.syncAppleHealthEntriesToBackend()
+                        // Backend sync of Apple Health entries is triggered by StatsHistoryManager during import.
                         
                         // After importing data, sync any existing manual entries only if write access is available
                         if self.isWriteAuthorized {
@@ -179,6 +202,9 @@ class HealthManager: ObservableObject {
                         } else {
                             print("⚠️ Write access not available - manual entries will not be synced to HealthKit")
                         }
+
+                        // Set initial last sync timestamp
+                        self.lastSyncTimestamp = Date()
                     }
                 } else {
                     print("❌ HealthKit authorization denied")
@@ -430,10 +456,9 @@ class HealthManager: ObservableObject {
         
         // Find entries that need to be deleted (exist in our app but not in HealthKit)
         let entriesToDelete = existingEntries.filter { entry in
-            if let sampleUUID = getHealthKitSampleUUID(for: entry) {
-                return !currentSampleUUIDs.contains(sampleUUID)
-            }
-            return true // If we don't have a sample UUID, delete it
+            // Prefer direct client UUID comparison; fallback to legacy map if present
+            let candidateUUID = getHealthKitSampleUUID(for: entry) ?? entry.id.uuidString
+            return !currentSampleUUIDs.contains(candidateUUID)
         }
         
         // Delete entries that no longer exist in HealthKit
@@ -459,17 +484,17 @@ class HealthManager: ObservableObject {
             switch type {
             case .weight:
                 let weightInKg = sample.quantity.doubleValue(for: HKUnit.gramUnit(with: .kilo))
-                entry = StatEntry(date: sample.startDate, value: weightInKg, type: .weight, source: .appleHealth)
+                entry = StatEntry(id: sample.uuid, date: sample.startDate, value: weightInKg, type: .weight, source: .appleHealth)
             case .height:
                 let heightInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
-                entry = StatEntry(date: sample.startDate, value: heightInCm, type: .height, source: .appleHealth)
+                entry = StatEntry(id: sample.uuid, date: sample.startDate, value: heightInCm, type: .height, source: .appleHealth)
             case .bodyFat:
                 let bodyFatDecimal = sample.quantity.doubleValue(for: HKUnit.percent())
                 let bodyFatPercentage = bodyFatDecimal * 100.0
-                entry = StatEntry(date: sample.startDate, value: bodyFatPercentage, type: .bodyFat, source: .appleHealth)
+                entry = StatEntry(id: sample.uuid, date: sample.startDate, value: bodyFatPercentage, type: .bodyFat, source: .appleHealth)
             case .waist:
                 let waistInCm = sample.quantity.doubleValue(for: HKUnit.meterUnit(with: .centi))
-                entry = StatEntry(date: sample.startDate, value: waistInCm, type: .waist, source: .appleHealth)
+                entry = StatEntry(id: sample.uuid, date: sample.startDate, value: waistInCm, type: .waist, source: .appleHealth)
             default:
                 continue
             }
@@ -485,7 +510,6 @@ class HealthManager: ObservableObject {
                 continue
             }
             
-            healthKitSampleMap[entry.id] = sample.uuid.uuidString
             newEntries.append(entry)
             addedCount += 1
         }
@@ -498,12 +522,12 @@ class HealthManager: ObservableObject {
         completion(true)
     }
     
-    // Function to save a manual entry to HealthKit
-    func saveToHealthKit(_ entry: StatEntry, completion: @escaping (Bool, Error?) -> Void) {
+    // Function to save an entry to HealthKit. Returns the created sample UUID (client_uuid) when successful
+    func saveToHealthKit(_ entry: StatEntry, completion: @escaping (Bool, Error?, UUID?) -> Void) {
         // Check if we have write authorization
         guard isWriteAuthorized else {
             print("❌ Not authorized to write to HealthKit - write access denied")
-            completion(false, nil)
+            completion(false, nil, nil)
             return
         }
         
@@ -532,13 +556,13 @@ class HealthManager: ObservableObject {
             print("📝 Preparing to save waist: \(value) \(unit)")
         case .bmi, .bicep, .chest, .thigh, .shoulder, .glutes, .calf, .neck, .forearm, .lbm, .fm, .ffmi, .bmr, .bsa:
             print("❌ \(entry.type) cannot be saved to HealthKit")
-            completion(false, nil)
+            completion(false, nil, nil)
             return
         }
         
         guard let quantityType = quantityType else {
             print("❌ Invalid quantity type")
-            completion(false, nil)
+            completion(false, nil, nil)
             return
         }
         
@@ -548,7 +572,7 @@ class HealthManager: ObservableObject {
         
         guard status == .sharingAuthorized else {
             print("❌ Not authorized to save \(entry.type) to HealthKit")
-            completion(false, nil)
+            completion(false, nil, nil)
             return
         }
         
@@ -567,12 +591,12 @@ class HealthManager: ObservableObject {
                 } else if let error = error {
                     print("❌ Error saving to HealthKit: \(error.localizedDescription)")
                 }
-                completion(success, error)
+                completion(success, error, sample.uuid)
             }
         }
     }
     
-    // Function to delete entries from HealthKit
+    // Function to delete entries from HealthKit by searching for date range (legacy fallback)
     func deleteFromHealthKit(_ entry: StatEntry, completion: @escaping (Bool, Error?) -> Void) {
         // Check if we have write authorization
         guard isWriteAuthorized else {
@@ -671,6 +695,62 @@ class HealthManager: ObservableObject {
             }
         }
         
+        healthStore.execute(query)
+    }
+
+    // Function to delete a HealthKit sample by its UUID (preferred precise deletion)
+    func deleteFromHealthKit(byUUID uuid: UUID, type: StatType, completion: @escaping (Bool, Error?) -> Void) {
+        guard isWriteAuthorized else {
+            print("❌ Not authorized to delete from HealthKit - write access denied")
+            completion(false, nil)
+            return
+        }
+
+        var quantityType: HKQuantityType?
+        switch type {
+        case .weight:
+            quantityType = HKQuantityType.quantityType(forIdentifier: .bodyMass)
+        case .height:
+            quantityType = HKQuantityType.quantityType(forIdentifier: .height)
+        case .bodyFat:
+            quantityType = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage)
+        case .waist:
+            quantityType = HKQuantityType.quantityType(forIdentifier: .waistCircumference)
+        default:
+            print("❌ Cannot delete \(type) from HealthKit - not supported")
+            completion(false, nil)
+            return
+        }
+
+        guard let sampleType = quantityType else {
+            completion(false, nil)
+            return
+        }
+
+        // Fetch all samples for this type and filter by UUID
+        let predicate = HKQuery.predicateForSamples(withStart: Date.distantPast, end: Date(), options: .strictEndDate)
+        let query = HKSampleQuery(sampleType: sampleType, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { [weak self] _, results, error in
+            guard let self = self else { return }
+            if let error = error {
+                DispatchQueue.main.async { completion(false, error) }
+                return
+            }
+            guard let samples = results else {
+                DispatchQueue.main.async { completion(false, nil) }
+                return
+            }
+
+            if let match = samples.first(where: { $0.uuid == uuid }) {
+                self.healthStore.delete(match) { success, error in
+                    DispatchQueue.main.async { completion(success, error) }
+                }
+            } else {
+                DispatchQueue.main.async {
+                    print("⚠️ No HealthKit sample found with UUID \(uuid.uuidString)")
+                    completion(true, nil)
+                }
+            }
+        }
         healthStore.execute(query)
     }
     
