@@ -14,7 +14,7 @@ class StatsHistoryManager: ObservableObject {
     private var appleHealthEntriesSynced = false
     
     // Reference to HealthManager and MetricSyncManager
-    private let healthManager = HealthManager()
+    private let healthManager = HealthManager.shared
     private var metricSyncManager: MetricSyncManager {
         MetricSyncManager.shared
     }

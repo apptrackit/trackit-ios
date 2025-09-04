@@ -3,6 +3,7 @@ import HealthKit
 import Combine
 
 class HealthManager: ObservableObject {
+    static let shared = HealthManager()
     private let healthStore = HKHealthStore()
     @Published var isHealthDataAvailable = false
     @Published var isAuthorized = false
@@ -21,17 +22,12 @@ class HealthManager: ObservableObject {
         }
     }
     
-    // Add a timer for periodic syncing
-    private var syncTimer: Timer?
-    private let syncInterval: TimeInterval = 300 // 5 minutes
-    
     // Health data types we want to read
     private let typesToRead: Set = [
         HKObjectType.quantityType(forIdentifier: .bodyMass)!,
         HKObjectType.quantityType(forIdentifier: .height)!,
         HKObjectType.quantityType(forIdentifier: .bodyFatPercentage)!,
-        HKObjectType.quantityType(forIdentifier: .waistCircumference)!,
-        HKObjectType.quantityType(forIdentifier: .stepCount)!
+        HKObjectType.quantityType(forIdentifier: .waistCircumference)!
     ]
     
     // Health data types we want to write
@@ -47,7 +43,7 @@ class HealthManager: ObservableObject {
 
     private static let lastSyncTimestampKey = "HealthKitLastSyncTimestamp"
     
-    init() {
+    private init() {
         // Load last sync timestamp
         if let stored = UserDefaults.standard.object(forKey: Self.lastSyncTimestampKey) as? TimeInterval {
             lastSyncTimestamp = Date(timeIntervalSince1970: stored)
@@ -55,32 +51,9 @@ class HealthManager: ObservableObject {
             lastSyncTimestamp = nil
         }
         checkHealthDataAvailability()
-        setupPeriodicSync()
     }
     
     deinit {
-        syncTimer?.invalidate()
-    }
-    
-    private func setupPeriodicSync() {
-        // Cancel existing timer if any
-        syncTimer?.invalidate()
-        
-        // Create a new timer that fires every 5 minutes
-        syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) { [weak self] _ in
-            self?.performBackgroundSync()
-        }
-    }
-    
-    private func performBackgroundSync() {
-        guard isAuthorized else { return }
-        
-        // Get the shared StatsHistoryManager instance
-        let historyManager = StatsHistoryManager.shared
-        importAllHealthData(historyManager: historyManager) { _ in
-            // Background sync completed
-            print("Background sync completed at \(Date())")
-        }
     }
     
     private func checkHealthDataAvailability() {
@@ -92,12 +65,13 @@ class HealthManager: ObservableObject {
     }
     
     func checkAuthorizationStatus(shouldRequestAccess: Bool = false) {
-        // Check authorization status for all types we want to read
+        // Check authorization status for read types (HealthKit does not expose true read status)
+        // Treat anything other than .notDetermined as acceptable for read purposes
         var allReadAuthorized = true
         for type in typesToRead {
             let status = healthStore.authorizationStatus(for: type)
-            if status.rawValue == 0 || status.rawValue == 2 { // .notDetermined = 0, .sharingDenied = 2
-                print("🔑 Read access denied for \(type)")
+            if status == .notDetermined {
+                print("🔑 Read access not determined for \(type)")
                 allReadAuthorized = false
                 break
             }
