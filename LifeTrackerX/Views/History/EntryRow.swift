@@ -48,7 +48,7 @@ struct EntryRow: View {
                 .font(.subheadline)
             
             // Chevron button for editable entries only
-            if entry.source != .automated {
+            if entry.source == .manual {
                 Button(action: onEdit) {
                     Image(systemName: "chevron.right")
                         .foregroundColor(.gray)

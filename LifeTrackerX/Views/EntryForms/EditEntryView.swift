@@ -17,7 +17,7 @@ struct EditEntryView: View {
     }
     
     private var canSave: Bool {
-        entry.value > 0
+        entry.source == .manual && entry.value > 0
     }
     
     var body: some View {
@@ -125,6 +125,7 @@ struct EditEntryView: View {
                                     .foregroundColor(.primary)
                                     .multilineTextAlignment(.trailing)
                                     .focused($isValueFieldFocused)
+                                    .disabled(entry.source != .manual)
                             }
                             .padding()
                         }
@@ -177,6 +178,7 @@ struct EditEntryView: View {
     }
     
     private func saveEntry() {
+        guard entry.source == .manual else { return }
         if entry.date <= Date() {
             var updated = entry
             if entry.type == .weight && preferredWeightUnit == "lb" {

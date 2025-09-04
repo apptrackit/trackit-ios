@@ -142,7 +142,8 @@ struct HistoryView: View {
                                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                                     VStack(spacing: 0) {
                                         HStack {
-                                            if isEditMode && !statType.isCalculated && entry.source != .automated {
+                                            // Allow deletion only for manual entries
+                                            if isEditMode && !statType.isCalculated && entry.source == .manual {
                                                 Button(action: {
                                                     withAnimation(.easeInOut) {
                                                         historyManager.removeEntry(entry)
@@ -159,7 +160,8 @@ struct HistoryView: View {
                                                 BMIRow(entry: entry, historyManager: historyManager)
                                             } else {
                                                 EntryRow(entry: entry, statType: statType) {
-                                                    if !isEditMode {
+                                                    // Only allow editing manual entries
+                                                    if !isEditMode && entry.source == .manual {
                                                         selectedEntry = entry
                                                     }
                                                 }
