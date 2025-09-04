@@ -312,6 +312,12 @@ class StatsHistoryManager: ObservableObject {
             return
         }
         
+        // Only allow deleting manual entries
+        guard entry.source == .manual else {
+            print("⚠️ Delete ignored: only manual entries can be removed in app")
+            return
+        }
+
         entries.removeAll { $0.id == entry.id }
         
         // Sync to backend database (for all non-calculated metrics)
@@ -378,6 +384,12 @@ class StatsHistoryManager: ObservableObject {
         
         print("📝 Updating entry: type=\(entry.type), source=\(entry.source), value=\(entry.value)")
         
+        // Only allow updating manual entries
+        guard entry.source == .manual else {
+            print("⚠️ Update ignored: only manual entries can be edited in app")
+            return
+        }
+
         if let index = entries.firstIndex(where: { $0.id == entry.id }) {
             let oldEntry = entries[index]
             var updated = entry
