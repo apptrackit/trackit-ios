@@ -233,30 +233,41 @@ class StatsHistoryManager: ObservableObject {
             saveEntries()
         }
         
-        // Queue create for backend for non-calculated metrics; don't skip Apple Health (server dedup via client_uuid)
-        if !entry.type.isCalculated {
-            print("📤 Queue create to backend: \(entry.type)")
-            Task { @MainActor in
-                metricSyncManager.syncEntry(entry, operation: .create)
-            }
-        }
-        
-        // If manual entry and authorized, save to HealthKit; update id to HK uuid returned
+        // For manual entries with HealthKit write access, first save to HealthKit to obtain HK sample UUID,
+        // adopt it as client_uuid, then queue create to backend using that UUID (keeps backend in sync).
         if entry.source == .manual && !entry.type.isCalculated && healthManager.isWriteAuthorized {
             healthManager.saveToHealthKit(entry) { success, error, healthKitUUID in
                 if success, let hkId = healthKitUUID {
                     print("✅ Synced \(entry.type) to Apple Health with UUID \(hkId.uuidString)")
-                    // For entries saved to HK, adopt HealthKit's UUID as client_uuid per spec
-                    // Need to replace the original entry (with entry.id) with the new HealthKit UUID
                     if let idx = self.entries.firstIndex(where: { $0.id == entry.id }) {
                         var updated = self.entries[idx]
                         updated.id = hkId
                         self.entries[idx] = updated
                         self.saveEntries()
                         self.triggerUpdate()
+                        // Now that id == HK UUID, create on backend once
+                        print("📤 Queue create to backend (post-HK save): \(updated.type)")
+                        Task { @MainActor in
+                            self.metricSyncManager.syncEntry(updated, operation: .create)
+                        }
                     }
-                } else if let error = error {
-                    print("❌ Error syncing to Apple Health: \(error.localizedDescription)")
+                } else {
+                    if let error = error { print("❌ Error syncing to Apple Health: \(error.localizedDescription)") }
+                    // Fall back to creating on backend with original UUID
+                    if !entry.type.isCalculated {
+                        print("📤 Fallback create to backend: \(entry.type)")
+                        Task { @MainActor in
+                            self.metricSyncManager.syncEntry(entry, operation: .create)
+                        }
+                    }
+                }
+            }
+        } else {
+            // Non-manual or no HK write: proceed with backend create immediately
+            if !entry.type.isCalculated {
+                print("📤 Queue create to backend: \(entry.type)")
+                Task { @MainActor in
+                    self.metricSyncManager.syncEntry(entry, operation: .create)
                 }
             }
         }
@@ -393,42 +404,51 @@ class StatsHistoryManager: ObservableObject {
         if let index = entries.firstIndex(where: { $0.id == entry.id }) {
             let oldEntry = entries[index]
             var updated = entry
-            
-            // Increment version for manual/Android edits; Apple Health edits may change id externally
-            if oldEntry.source != .appleHealth {
-                updated.version = oldEntry.version + 1
-            }
+            // Increment version for manual edits
+            updated.version = oldEntry.version + 1
+            // Persist entry immediately to keep local and UI consistent
             entries[index] = updated
-            
-            // Sync to backend database (for all non-calculated metrics)
-            if !updated.type.isCalculated {
-                print("📤 Queue update to backend: \(updated.type)")
-                Task { @MainActor in
-                    metricSyncManager.syncEntry(updated, operation: .update)
-                }
-            }
-            
-            // If this is a manual entry and we're authorized, update in HealthKit
-            if oldEntry.source == .manual && updated.type != .bmi && healthManager.isWriteAuthorized {
-                print("📤 Syncing updated entry to Apple Health")
-                // Delete old by UUID then save new; adopt new UUID
+
+            // For manual entries with HK write access, perform HK update first to get the new sample UUID,
+            // update local id, then queue backend update using the final id. This keeps both ends in sync.
+            if updated.source == .manual && updated.type != .bmi && healthManager.isWriteAuthorized {
+                print("📤 Syncing updated manual entry to Apple Health, then backend")
+                // Delete old HK sample by old UUID then save new value
                 healthManager.deleteFromHealthKit(byUUID: oldEntry.id, type: updated.type) { success, error in
-                    if success {
-                        self.healthManager.saveToHealthKit(updated) { success, error, healthKitUUID in
-                            if success, let hkId = healthKitUUID {
-                                // Update the entry in place with the new HealthKit UUID
-                                if let idx = self.entries.firstIndex(where: { $0.id == updated.id }) {
-                                    self.entries[idx].id = hkId
-                                    self.saveEntries()
-                                    self.triggerUpdate()
+                    self.healthManager.saveToHealthKit(updated) { success, error, healthKitUUID in
+                        if success, let hkId = healthKitUUID {
+                            if let idx = self.entries.firstIndex(where: { $0.id == updated.id }) {
+                                self.entries[idx].id = hkId
+                                self.saveEntries()
+                                self.triggerUpdate()
+                            }
+                            // After HK success and id update, send backend update (server matches by client_uuid)
+                            if !updated.type.isCalculated {
+                                var backendUpdated = updated
+                                backendUpdated.id = hkId
+                                print("📤 Queue update to backend (post-HK update): \(backendUpdated.type)")
+                                Task { @MainActor in
+                                    self.metricSyncManager.syncEntry(backendUpdated, operation: .update)
                                 }
-                                print("✅ Successfully saved updated entry to Apple Health with new UUID")
-                            } else if let error = error {
-                                print("❌ Error saving updated entry to Apple Health: \(error.localizedDescription)")
+                            }
+                        } else {
+                            if let error = error { print("❌ Error saving updated entry to Apple Health: \(error.localizedDescription)") }
+                            // If HK save fails, still queue backend update with existing id
+                            if !updated.type.isCalculated {
+                                print("📤 Fallback update to backend (HK failed): \(updated.type)")
+                                Task { @MainActor in
+                                    self.metricSyncManager.syncEntry(updated, operation: .update)
+                                }
                             }
                         }
-                    } else if let error = error {
-                        print("❌ Error deleting old entry from Apple Health: \(error.localizedDescription)")
+                    }
+                }
+            } else {
+                // No HK write access: just queue backend update
+                if !updated.type.isCalculated {
+                    print("📤 Queue update to backend: \(updated.type)")
+                    Task { @MainActor in
+                        self.metricSyncManager.syncEntry(updated, operation: .update)
                     }
                 }
             }
