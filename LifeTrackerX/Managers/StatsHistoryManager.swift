@@ -328,16 +328,40 @@ class StatsHistoryManager: ObservableObject {
         }
         
         // If this was a manual entry written to HealthKit, delete by UUID if possible
-        if entry.source == .manual && healthManager.isWriteAuthorized {
-            healthManager.deleteFromHealthKit(byUUID: entry.id, type: entry.type) { success, error in
-                if success {
-                    print("Successfully deleted \(entry.type) from Apple Health by UUID")
-                } else if let error = error {
-                    print("Error deleting from Apple Health: \(error.localizedDescription)")
+        if entry.source == .manual {
+            let attemptDeletionByUUID: () -> Void = {
+                self.healthManager.deleteFromHealthKit(byUUID: entry.id, type: entry.type) { success, error in
+                    if success {
+                        print("Successfully deleted \(entry.type) from Apple Health by UUID")
+                    } else {
+                        // Fallback to predicate-based deletion by date if direct UUID deletion fails
+                        print("⚠️ UUID-based deletion failed or not found; attempting legacy deletion by date")
+                        self.healthManager.deleteFromHealthKit(entry) { legacySuccess, legacyError in
+                            if legacySuccess {
+                                print("Successfully deleted \(entry.type) from Apple Health by date")
+                            } else if let legacyError = legacyError {
+                                print("Error deleting from Apple Health by date: \(legacyError.localizedDescription)")
+                            } else {
+                                print("⚠️ No matching HealthKit sample found to delete by date")
+                            }
+                        }
+                    }
                 }
             }
-        } else if entry.source == .manual && !healthManager.isWriteAuthorized {
-            print("⚠️ Cannot delete from HealthKit - write access not available")
+
+            if healthManager.isWriteAuthorized {
+                attemptDeletionByUUID()
+            } else {
+                print("🔑 Write not authorized currently. Requesting authorization to perform deletion...")
+                healthManager.requestHealthAuthorization()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    if self.healthManager.isWriteAuthorized {
+                        attemptDeletionByUUID()
+                    } else {
+                        print("⚠️ Cannot delete from HealthKit - write access still not available")
+                    }
+                }
+            }
         }
         
         saveEntries()

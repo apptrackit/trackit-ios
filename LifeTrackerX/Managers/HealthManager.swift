@@ -572,13 +572,6 @@ class HealthManager: ObservableObject {
     
     // Function to delete entries from HealthKit by searching for date range (legacy fallback)
     func deleteFromHealthKit(_ entry: StatEntry, completion: @escaping (Bool, Error?) -> Void) {
-        // Check if we have write authorization
-        guard isWriteAuthorized else {
-            print("❌ Not authorized to delete from HealthKit - write access denied")
-            completion(false, nil)
-            return
-        }
-        
         var quantityType: HKQuantityType?
         
         switch entry.type {
@@ -674,12 +667,6 @@ class HealthManager: ObservableObject {
 
     // Function to delete a HealthKit sample by its UUID (preferred precise deletion)
     func deleteFromHealthKit(byUUID uuid: UUID, type: StatType, completion: @escaping (Bool, Error?) -> Void) {
-        guard isWriteAuthorized else {
-            print("❌ Not authorized to delete from HealthKit - write access denied")
-            completion(false, nil)
-            return
-        }
-
         var quantityType: HKQuantityType?
         switch type {
         case .weight:
@@ -719,9 +706,21 @@ class HealthManager: ObservableObject {
                     DispatchQueue.main.async { completion(success, error) }
                 }
             } else {
-                DispatchQueue.main.async {
-                    print("⚠️ No HealthKit sample found with UUID \(uuid.uuidString)")
-                    completion(true, nil)
+                // Fallback: try to find by our metadata if available to be resilient across app restarts
+                if let matchByMeta = samples.compactMap({ $0 as? HKQuantitySample }).first(where: { sample in
+                    if let meta = sample.metadata, let clientId = meta["lifeTrackerXEntryId"] as? String {
+                        return clientId == uuid.uuidString
+                    }
+                    return false
+                }) {
+                    self.healthStore.delete(matchByMeta) { success, error in
+                        DispatchQueue.main.async { completion(success, error) }
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        print("⚠️ No HealthKit sample found with UUID or metadata client id \(uuid.uuidString)")
+                        completion(false, nil)
+                    }
                 }
             }
         }
