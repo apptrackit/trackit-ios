@@ -17,6 +17,8 @@ class MetricSyncManager: ObservableObject {
     private var pendingOperations: [SyncOperation] = []
     private var networkMonitor: NWPathMonitor?
     private var syncTimer: Timer?
+    private var isProcessingOperations = false
+    private var processScheduled = false
     private let maxRetryCount = 3
     private let syncInterval: TimeInterval = 30 // 30 seconds
     
@@ -81,6 +83,9 @@ class MetricSyncManager: ObservableObject {
         updatePendingCount()
         
         logger.info("Queued operation: \(operation.operationType.rawValue) for \(operation.statType.rawValue)")
+        
+        // Schedule near-term processing to reduce perceived delay without immediate re-entrancy
+        scheduleProcessSoon()
     }
     
     func removeOperation(_ operation: SyncOperation) {
@@ -99,6 +104,11 @@ class MetricSyncManager: ObservableObject {
     private func processPendingOperations() {
         guard isOnline && !self.pendingOperations.isEmpty else { return }
         
+        if isProcessingOperations {
+            processScheduled = true
+            return
+        }
+        isProcessingOperations = true
         logger.info("Processing \(self.pendingOperations.count) pending operations")
         
         DispatchQueue.main.async {
@@ -120,6 +130,22 @@ class MetricSyncManager: ObservableObject {
             }
             
             self.syncStatus = .completed
+            self.isProcessingOperations = false
+            if self.processScheduled {
+                self.processScheduled = false
+                self.processPendingOperations()
+            }
+        }
+    }
+
+    private func scheduleProcessSoon() {
+        guard isOnline else { return }
+        if !processScheduled {
+            processScheduled = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.processScheduled = false
+                self.processPendingOperations()
+            }
         }
     }
     
