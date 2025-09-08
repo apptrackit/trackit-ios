@@ -343,6 +343,21 @@ struct AddPhotoView: View {
         )
         
         photoManager.addPhoto(photo: photo)
+
+        // Fire-and-forget upload to backend using primary category mapping
+        let primaryTypeId = photo.primaryCategory.backendImageTypeId
+        let uploadedAtISO = dateAtEndOfDay.iso8601StringUTC
+        Task {
+            do {
+                let response = try await NetworkManager.shared.uploadImage(imageData: imageData, imageTypeId: primaryTypeId, uploadedAtISO8601: uploadedAtISO)
+                if response.success == false {
+                    // Best-effort logging; UI toasts can be added later
+                    print("Image upload failed: \(response.error ?? response.message ?? "Unknown error")")
+                }
+            } catch {
+                print("Image upload error: \(error.localizedDescription)")
+            }
+        }
         dismiss()
     }
 }

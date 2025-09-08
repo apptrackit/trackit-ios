@@ -261,7 +261,7 @@ struct PhotoDetailView: View {
             .alert("Delete Photo", isPresented: $showDeleteAlert) {
                 Button("Cancel", role: .cancel) { }
                 Button("Delete", role: .destructive) {
-                    photoManager.deletePhoto(id: photo.id)
+                    Task { await ImageSyncManager.shared.delete(photo: photo) }
                     dismiss()
                 }
             } message: {
