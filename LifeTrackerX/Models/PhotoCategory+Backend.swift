@@ -17,6 +17,20 @@ extension PhotoCategory {
         case .other, .all: return 8
         }
     }
+
+    static func fromBackendImageTypeId(_ id: Int) -> PhotoCategory {
+        switch id {
+        case 1: return .front
+        case 2: return .back
+        case 3: return .side
+        case 4: return .arms
+        case 5: return .chest
+        case 6: return .legs
+        case 7: return .other // full body not defined; map to other
+        case 8: return .other
+        default: return .other
+        }
+    }
 }
 
 extension Date {

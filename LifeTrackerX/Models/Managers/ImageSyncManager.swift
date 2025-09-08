@@ -92,8 +92,29 @@ class ImageSyncManager: ObservableObject {
                 }
             }
             
-            // 4) Remote entries missing locally → no action (no download pipeline yet)
-            //    Could be implemented later using downloadImage
+            // 4) Remote entries missing locally → download and add locally
+            for remoteImage in remote.images {
+                guard let remoteId = Int(remoteImage.id) else { continue }
+                if localByBackendId[remoteId] != nil { continue }
+                // If any local photo already references this backendId, skip
+                if photoManager.photos.contains(where: { $0.backendId == remoteId }) { continue }
+                do {
+                    let data = try await networkManager.downloadImage(id: remoteId)
+                    let categories = [PhotoCategory.fromBackendImageTypeId(remoteImage.image_type_id)]
+                    // Parse server date
+                    let date: Date = ISO8601DateFormatter().date(from: remoteImage.date) ?? Date()
+                    let photo = ProgressPhoto(
+                        date: date,
+                        categories: categories,
+                        imageData: data,
+                        notes: nil,
+                        backendId: remoteId
+                    )
+                    photoManager.addPhoto(photo: photo)
+                } catch {
+                    logger.error("Failed downloading remote image id=\(remoteId): \(error.localizedDescription)")
+                }
+            }
             
             // 5) Handle deletions queued locally (not yet tracked separately). If a local photo has backendId but was deleted locally, we already removed it.
             //    For now, expose a public delete API to be called by UI that will also call backend.
