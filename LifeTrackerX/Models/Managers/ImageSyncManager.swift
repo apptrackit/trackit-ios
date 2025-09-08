@@ -66,7 +66,7 @@ class ImageSyncManager: ObservableObject {
                 }
             }
             
-            // 3) Upload local photos missing on server
+            // 3) Upload local photos missing on server (retry-friendly)
             for photo in photoManager.photos {
                 if let backendId = photo.backendId, remoteIds.contains(backendId) {
                     continue
@@ -86,6 +86,8 @@ class ImageSyncManager: ObservableObject {
                             // ProgressPhotoManager handles save on updatePhoto; call update to persist
                             photoManager.updatePhoto(photo: updated)
                         }
+                    } else if resp.success == false {
+                        self.logger.error("Upload failed for local photo id=\(photo.id): \(resp.error ?? resp.message ?? "Unknown error")")
                     }
                 } catch {
                     logger.error("Upload during sync failed: \(error.localizedDescription)")

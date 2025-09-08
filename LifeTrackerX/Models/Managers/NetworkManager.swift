@@ -9,7 +9,7 @@ class NetworkManager {
     
     private init() {}
     
-    func makeAuthenticatedRequest<T: Decodable>(_ endpoint: String, method: String = "GET", body: Data? = nil) async throws -> T {
+    func makeAuthenticatedRequest<T: Decodable>(_ endpoint: String, method: String = "GET", body: Data? = nil, timeout: TimeInterval? = nil) async throws -> T {
         logger.debug("Making authenticated request to: \(endpoint) with method: \(method)")
         
         guard let accessToken = secureStorage.getAccessToken() else {
@@ -25,9 +25,10 @@ class NetworkManager {
             logger.debug("Request body: \(bodyString)")
         }
         
-        guard let request = authService.createRequest(endpoint, method: method, body: body, headers: headers) else {
+        guard var request = authService.createRequest(endpoint, method: method, body: body, headers: headers) else {
             throw AuthError.invalidURL
         }
+        if let timeout = timeout { request.timeoutInterval = timeout }
         
         do {
             let (responseData, response) = try await URLSession.shared.data(for: request)
@@ -124,6 +125,10 @@ class NetworkManager {
 
         let (responseData, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else { throw AuthError.invalidResponse }
+        logger.debug("Upload response status code: \(httpResponse.statusCode)")
+        if let responseString = String(data: responseData, encoding: .utf8) {
+            logger.debug("Upload response body: \(responseString)")
+        }
 
         // If unauthorized, try token refresh then retry once
         if httpResponse.statusCode == 401,
@@ -136,11 +141,11 @@ class NetworkManager {
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            // Try to decode error response
             if let decoded = try? JSONDecoder().decode(ImageUploadResponse.self, from: responseData) {
                 return decoded
+            } else {
+                throw AuthError.networkError(NSError(domain: "ImageUpload", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Upload failed with status \(httpResponse.statusCode)"]))
             }
-            throw AuthError.unknown
         }
 
         let decoded = try JSONDecoder().decode(ImageUploadResponse.self, from: responseData)
@@ -149,7 +154,7 @@ class NetworkManager {
 
     func listImages(limit: Int = 100, offset: Int = 0) async throws -> ImagesListResponse {
         let endpoint = "/api/images?limit=\(limit)&offset=\(offset)"
-        return try await makeAuthenticatedRequest(endpoint, method: "GET")
+        return try await makeAuthenticatedRequest(endpoint, method: "GET", timeout: 30)
     }
 
     func deleteImage(id: Int) async throws -> BasicResponse {
@@ -163,7 +168,9 @@ class NetworkManager {
         guard let request = authService.createRequest("/api/images/\(id)/download", method: "GET", headers: [
             "Authorization": "Bearer \(accessToken)"
         ]) else { throw AuthError.invalidURL }
-        let (data, response) = try await URLSession.shared.data(for: request)
+        var req = request
+        req.timeoutInterval = 60
+        let (data, response) = try await URLSession.shared.data(for: req)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw AuthError.unknown
         }
