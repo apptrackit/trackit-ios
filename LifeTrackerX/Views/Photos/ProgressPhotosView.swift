@@ -94,6 +94,9 @@ struct ProgressPhotosView: View {
                 historyManager: historyManager
             )
         }
+        .task {
+            await ImageSyncManager.shared.sync()
+        }
     }
 }
 
