@@ -100,38 +100,39 @@ class AuthViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        do {
-            guard let deviceId = secureStorage.getDeviceId(),
-                  let userId = user?.id,
-                  let accessToken = secureStorage.getAccessToken() else {
-                logger.error("Missing required data for logout")
-                throw AuthError.unknown
+        // Try to logout from server (if online), but don't fail if offline
+        if let deviceId = secureStorage.getDeviceId(),
+           let userId = user?.id,
+           let accessToken = secureStorage.getAccessToken() {
+            do {
+                logger.debug("Logging out with device ID: \(deviceId)")
+                logger.debug("Using access token: \(accessToken.prefix(10))...")
+                _ = try await authService.logout(deviceId: deviceId, userId: userId, accessToken: accessToken)
+                logger.info("Server logout successful")
+            } catch {
+                // Log the error but continue with local cleanup
+                logger.warning("Server logout failed (likely offline): \(error.localizedDescription)")
+                logger.info("Continuing with local logout...")
             }
-            
-            logger.debug("Logging out with device ID: \(deviceId)")
-            logger.debug("Using access token: \(accessToken.prefix(10))...")
-            _ = try await authService.logout(deviceId: deviceId, userId: userId, accessToken: accessToken)
-            
-            // Clear all local data
-            await clearAllLocalData()
-            
-            isAuthenticated = false
-            user = nil
-            logger.info("Logout completed successfully")
-        } catch {
-            logger.error("Logout failed: \(error.localizedDescription)")
-            errorMessage = error.localizedDescription
+        } else {
+            logger.warning("Missing auth data for server logout, proceeding with local cleanup only")
         }
         
+        // Always clear all local data, regardless of server response
+        await clearAllLocalData()
+        
+        isAuthenticated = false
+        user = nil
         isLoading = false
+        logger.info("Logout completed - all local data cleared")
     }
     
     private func clearAllLocalData() async {
         logger.info("Clearing all local data for logout")
         
-        // Clear authentication data
-        secureStorage.clearAuthData()
-        logger.info("Cleared authentication data")
+        // Clear ALL Keychain data for the app
+        secureStorage.clearAllKeychainData()
+        logger.info("Cleared all Keychain data")
         
         // Clear all metric entries
         StatsHistoryManager.shared.clearAllEntries()
@@ -145,7 +146,24 @@ class AuthViewModel: ObservableObject {
         MetricSyncManager.shared.clearAllPendingOperations()
         logger.info("Cleared all pending sync operations")
         
+        // Clear HealthKit sync timestamp
+        HealthManager.shared.clearSyncData()
+        logger.info("Cleared HealthKit sync data")
+        
+        // Clear UserDefaults for the app
+        clearUserDefaults()
+        logger.info("Cleared UserDefaults data")
+        
         logger.info("All local data cleared successfully")
+    }
+    
+    private func clearUserDefaults() {
+        // Get all UserDefaults keys used by the app and clear them
+        let defaults = UserDefaults.standard
+        let domain = Bundle.main.bundleIdentifier!
+        defaults.removePersistentDomain(forName: domain)
+        defaults.synchronize()
+        logger.info("Removed all UserDefaults for domain: \(domain)")
     }
     
     private func loadUserDataFromServer() async {

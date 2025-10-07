@@ -731,4 +731,12 @@ class HealthManager: ObservableObject {
     func clearHealthKitSampleMap() {
         healthKitSampleMap.removeAll()
     }
+    
+    // Clear all HealthKit sync data on logout
+    func clearSyncData() {
+        lastSyncTimestamp = nil
+        healthKitSampleMap.removeAll()
+        UserDefaults.standard.removeObject(forKey: Self.lastSyncTimestampKey)
+        print("🧹 Cleared all HealthKit sync data")
+    }
 }

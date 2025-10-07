@@ -399,9 +399,10 @@ class MetricSyncManager: ObservableObject {
     // MARK: - Utility
     func clearAllPendingOperations() {
         pendingOperations.removeAll()
+        UserDefaults.standard.removeObject(forKey: pendingOperationsKey)
         savePendingOperations()
         updatePendingCount()
-        logger.info("Cleared all pending operations")
+        logger.info("Cleared all pending operations and UserDefaults data")
     }
     
     func getPendingOperations() -> [SyncOperation] {

@@ -534,8 +534,11 @@ class StatsHistoryManager: ObservableObject {
     // Debug function to clear all entries
     func clearAllEntries() {
         entries.removeAll()
+        appleHealthEntriesSynced = false
+        UserDefaults.standard.removeObject(forKey: saveKey)
         saveEntries()
         triggerUpdate()
+        print("🧹 Cleared all stat entries and UserDefaults data")
     }
     
     // Function to clear only entries from a specific source
