@@ -297,6 +297,24 @@ class SecureStorageManager {
         }
     }
     
+    // Clear all Keychain items for this app
+    func clearAllKeychainData() {
+        logger.info("Clearing all Keychain data for app")
+        
+        // Delete all items in the keychain for our service
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService
+        ]
+        
+        let status = SecItemDelete(query as CFDictionary)
+        if status == errSecSuccess || status == errSecItemNotFound {
+            logger.info("Successfully cleared all Keychain data")
+        } else {
+            logger.error("Failed to clear all Keychain data, status: \(status)")
+        }
+    }
+    
     func saveAccessToken(_ token: String) {
         logger.info("Saving access token to Keychain")
         if let data = token.data(using: .utf8) {

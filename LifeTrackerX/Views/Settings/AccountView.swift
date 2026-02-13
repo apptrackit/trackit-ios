@@ -4,7 +4,7 @@ import HealthKit
 struct AccountView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authViewModel: AuthViewModel
-    @StateObject private var healthManager = HealthManager()
+    @ObservedObject private var healthManager = HealthManager.shared
     @ObservedObject var historyManager: StatsHistoryManager
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("selectedTheme") private var selectedTheme: String = "system"
@@ -68,7 +68,6 @@ struct AccountView: View {
                             }
                         }
                     }
-                    .disabled(true)
                 }
                 
                 Section(header: Text("Appearance")) {

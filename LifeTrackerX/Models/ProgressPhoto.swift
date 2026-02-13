@@ -48,21 +48,24 @@ struct ProgressPhoto: Identifiable, Codable {
     var categories: [PhotoCategory]
     var imageData: Data
     var notes: String?
+    var backendId: Int?
     
     // Define the CodingKeys to handle both old and new format
     enum CodingKeys: String, CodingKey {
         case id, date, imageData, notes
         case categories
+        case backendId
         case category // For backward compatibility
         case associatedMeasurements // For backward compatibility
     }
     
-    init(id: UUID = UUID(), date: Date = Date(), categories: [PhotoCategory], imageData: Data, notes: String? = nil) {
+    init(id: UUID = UUID(), date: Date = Date(), categories: [PhotoCategory], imageData: Data, notes: String? = nil, backendId: Int? = nil) {
         self.id = id
         self.date = date
         self.categories = categories
         self.imageData = imageData
         self.notes = notes
+        self.backendId = backendId
     }
     
     // For backward compatibility with older data
@@ -72,6 +75,7 @@ struct ProgressPhoto: Identifiable, Codable {
         date = try container.decode(Date.self, forKey: .date)
         imageData = try container.decode(Data.self, forKey: .imageData)
         notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        backendId = try container.decodeIfPresent(Int.self, forKey: .backendId)
         
         // Handle both old and new format
         if let singleCategory = try? container.decodeIfPresent(PhotoCategory.self, forKey: .category) {
@@ -89,6 +93,7 @@ struct ProgressPhoto: Identifiable, Codable {
         try container.encode(imageData, forKey: .imageData)
         try container.encodeIfPresent(notes, forKey: .notes)
         try container.encode(categories, forKey: .categories)
+        try container.encodeIfPresent(backendId, forKey: .backendId)
     }
     
     // Primary category for backward compatibility

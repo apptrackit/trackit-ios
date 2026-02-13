@@ -3,7 +3,7 @@ import Charts
 
 struct DashboardView: View {
     @StateObject private var historyManager = StatsHistoryManager.shared
-    @StateObject private var healthManager = HealthManager()
+    @ObservedObject private var healthManager = HealthManager.shared
     @State private var showingAddEntrySheet = false
     @State private var showingAccountSheet = false
     @State private var selectedTimeFrame: TimeFrame = .sixMonths
@@ -479,7 +479,6 @@ struct ProgressChartView: View {
     }
     
     private func formatDate(_ date: Date) -> String {
-        let calendar = Calendar.current
         let formatter = DateFormatter()
         formatter.locale = Locale.current
         

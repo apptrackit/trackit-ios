@@ -14,8 +14,10 @@ class StatsHistoryManager: ObservableObject {
     private var appleHealthEntriesSynced = false
     
     // Reference to HealthManager and MetricSyncManager
-    private let healthManager = HealthManager()
-    private let metricSyncManager = MetricSyncManager.shared
+    private let healthManager = HealthManager.shared
+    private var metricSyncManager: MetricSyncManager {
+        MetricSyncManager.shared
+    }
     
     // Make init private to enforce singleton pattern
     private init() {
@@ -46,7 +48,7 @@ class StatsHistoryManager: ObservableObject {
         print("📤 Found \(manualEntries.count) manual entries to sync")
         
         for entry in manualEntries {
-            healthManager.saveToHealthKit(entry) { success, error in
+            healthManager.saveToHealthKit(entry) { success, error, _ in
                 if success {
                     print("✅ Successfully synced historical \(entry.type) to Apple Health")
                 } else if let error = error {
@@ -56,19 +58,35 @@ class StatsHistoryManager: ObservableObject {
         }
     }
     
+    // Prevent concurrent or repeated syncs
+    private var isAppleHealthSyncInProgress = false
+
     // Function to sync Apple Health entries to backend
+    @MainActor
     func syncAppleHealthEntriesToBackend() {
+        // Avoid concurrent/infinite sync loops
+        if isAppleHealthSyncInProgress {
+            print("⏳ Apple Health sync already in progress, skipping")
+            return
+        }
+
         // Check if we've already synced Apple Health entries
         if appleHealthEntriesSynced {
             print("📤 Apple Health entries already synced to backend, skipping")
             return
         }
         
+        isAppleHealthSyncInProgress = true
         print("📤 Starting sync of Apple Health entries to backend")
         
-        // Get all Apple Health entries that aren't calculated
-        let appleHealthEntries = entries.filter { $0.source == .appleHealth && !$0.type.isCalculated }
-        print("📤 Found \(appleHealthEntries.count) Apple Health entries to sync to backend")
+        // Get all Apple Health entries that aren't calculated and not yet associated to backend
+        // Also skip entries that are already queued for creation to avoid duplicates
+        let pending = MetricSyncManager.shared.getPendingOperations()
+        let pendingClientUUIDs = Set(pending.filter { $0.operationType == .create }.map { $0.entryId })
+        let appleHealthEntries = entries.filter {
+            $0.source == .appleHealth && !$0.type.isCalculated && $0.backendId == nil && !pendingClientUUIDs.contains($0.id)
+        }
+        print("📤 Found \(appleHealthEntries.count) Apple Health entries to sync to backend (backendId == nil)")
         
         for entry in appleHealthEntries {
             Task { @MainActor in
@@ -76,8 +94,9 @@ class StatsHistoryManager: ObservableObject {
             }
         }
         
-        // Mark as synced
+        // Mark as synced for this session; will be reset if new Apple Health entries arrive
         appleHealthEntriesSynced = true
+        isAppleHealthSyncInProgress = false
     }
     
     // Function to sync all entries to backend database
@@ -194,17 +213,11 @@ class StatsHistoryManager: ObservableObject {
             return
         }
         
-        // Only replace if the entry has the same date, type and source
-        if let index = entries.firstIndex(where: {
-            Calendar.current.isDate($0.date, inSameDayAs: entry.date) &&
-            $0.type == entry.type &&
-            $0.source == entry.source
-        }) {
+        // Use client UUID as identity: replace if same id
+        if let index = entries.firstIndex(where: { $0.id == entry.id }) {
             entries[index] = entry
         } else {
             entries.append(entry)
-            
-            // If this is a new Apple Health entry, reset the sync flag
             if entry.source == .appleHealth {
                 appleHealthEntriesSynced = false
             }
@@ -220,23 +233,41 @@ class StatsHistoryManager: ObservableObject {
             saveEntries()
         }
         
-        // Sync to backend database (for all non-calculated metrics, but not Apple Health entries during import)
-        if !entry.type.isCalculated && entry.source != .appleHealth {
-            print("📤 Syncing entry to backend: \(entry.type)")
-            Task { @MainActor in
-                metricSyncManager.syncEntry(entry, operation: .create)
-            }
-        }
-        
-        // If this is a manual entry and not from Apple Health, sync to HealthKit
-        if entry.source == .manual && !entry.type.isCalculated {
-            if healthManager.isWriteAuthorized {
-                healthManager.saveToHealthKit(entry) { success, error in
-                    if success {
-                        print("✅ Synced \(entry.type) to Apple Health")
-                    } else if let error = error {
-                        print("❌ Error syncing to Apple Health: \(error.localizedDescription)")
+        // For manual entries with HealthKit write access, first save to HealthKit to obtain HK sample UUID,
+        // adopt it as client_uuid, then queue create to backend using that UUID (keeps backend in sync).
+        if entry.source == .manual && !entry.type.isCalculated && healthManager.isWriteAuthorized {
+            healthManager.saveToHealthKit(entry) { success, error, healthKitUUID in
+                if success, let hkId = healthKitUUID {
+                    print("✅ Synced \(entry.type) to Apple Health with UUID \(hkId.uuidString)")
+                    if let idx = self.entries.firstIndex(where: { $0.id == entry.id }) {
+                        var updated = self.entries[idx]
+                        updated.id = hkId
+                        self.entries[idx] = updated
+                        self.saveEntries()
+                        self.triggerUpdate()
+                        // Now that id == HK UUID, create on backend once
+                        print("📤 Queue create to backend (post-HK save): \(updated.type)")
+                        Task { @MainActor in
+                            self.metricSyncManager.syncEntry(updated, operation: .create)
+                        }
                     }
+                } else {
+                    if let error = error { print("❌ Error syncing to Apple Health: \(error.localizedDescription)") }
+                    // Fall back to creating on backend with original UUID
+                    if !entry.type.isCalculated {
+                        print("📤 Fallback create to backend: \(entry.type)")
+                        Task { @MainActor in
+                            self.metricSyncManager.syncEntry(entry, operation: .create)
+                        }
+                    }
+                }
+            }
+        } else {
+            // Non-manual or no HK write: proceed with backend create immediately
+            if !entry.type.isCalculated {
+                print("📤 Queue create to backend: \(entry.type)")
+                Task { @MainActor in
+                    self.metricSyncManager.syncEntry(entry, operation: .create)
                 }
             }
         }
@@ -276,7 +307,9 @@ class StatsHistoryManager: ObservableObject {
         
         // If we added Apple Health entries, sync them to backend after all entries are added
         if hasAppleHealthEntries {
-            syncAppleHealthEntriesToBackend()
+            Task { @MainActor in
+                self.syncAppleHealthEntriesToBackend()
+            }
         }
         
         triggerUpdate()
@@ -290,6 +323,12 @@ class StatsHistoryManager: ObservableObject {
             return
         }
         
+        // Only allow deleting manual entries
+        guard entry.source == .manual else {
+            print("⚠️ Delete ignored: only manual entries can be removed in app")
+            return
+        }
+
         entries.removeAll { $0.id == entry.id }
         
         // Sync to backend database (for all non-calculated metrics)
@@ -305,17 +344,41 @@ class StatsHistoryManager: ObservableObject {
             recalculateAllDerivedValues()
         }
         
-        // If this was a manual entry, also delete from HealthKit
-        if entry.source == .manual && healthManager.isWriteAuthorized {
-            healthManager.deleteFromHealthKit(entry) { success, error in
-                if success {
-                    print("Successfully deleted \(entry.type) from Apple Health")
-                } else if let error = error {
-                    print("Error deleting from Apple Health: \(error.localizedDescription)")
+        // If this was a manual entry written to HealthKit, delete by UUID if possible
+        if entry.source == .manual {
+            let attemptDeletionByUUID: () -> Void = {
+                self.healthManager.deleteFromHealthKit(byUUID: entry.id, type: entry.type) { success, error in
+                    if success {
+                        print("Successfully deleted \(entry.type) from Apple Health by UUID")
+                    } else {
+                        // Fallback to predicate-based deletion by date if direct UUID deletion fails
+                        print("⚠️ UUID-based deletion failed or not found; attempting legacy deletion by date")
+                        self.healthManager.deleteFromHealthKit(entry) { legacySuccess, legacyError in
+                            if legacySuccess {
+                                print("Successfully deleted \(entry.type) from Apple Health by date")
+                            } else if let legacyError = legacyError {
+                                print("Error deleting from Apple Health by date: \(legacyError.localizedDescription)")
+                            } else {
+                                print("⚠️ No matching HealthKit sample found to delete by date")
+                            }
+                        }
+                    }
                 }
             }
-        } else if entry.source == .manual && !healthManager.isWriteAuthorized {
-            print("⚠️ Cannot delete from HealthKit - write access not available")
+
+            if healthManager.isWriteAuthorized {
+                attemptDeletionByUUID()
+            } else {
+                print("🔑 Write not authorized currently. Requesting authorization to perform deletion...")
+                healthManager.requestHealthAuthorization()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    if self.healthManager.isWriteAuthorized {
+                        attemptDeletionByUUID()
+                    } else {
+                        print("⚠️ Cannot delete from HealthKit - write access still not available")
+                    }
+                }
+            }
         }
         
         saveEntries()
@@ -332,42 +395,66 @@ class StatsHistoryManager: ObservableObject {
         
         print("📝 Updating entry: type=\(entry.type), source=\(entry.source), value=\(entry.value)")
         
+        // Only allow updating manual entries
+        guard entry.source == .manual else {
+            print("⚠️ Update ignored: only manual entries can be edited in app")
+            return
+        }
+
         if let index = entries.firstIndex(where: { $0.id == entry.id }) {
             let oldEntry = entries[index]
-            entries[index] = entry
-            
-            // Sync to backend database (for all non-calculated metrics)
-            if !entry.type.isCalculated {
-                print("📤 Syncing updated entry to backend: \(entry.type)")
-                Task { @MainActor in
-                    metricSyncManager.syncEntry(entry, operation: .update)
-                }
-            }
-            
-            // If this is a manual entry and we're authorized, update in HealthKit
-            if oldEntry.source == .manual && entry.type != .bmi && healthManager.isWriteAuthorized {
-                print("📤 Syncing updated entry to Apple Health")
-                
-                // First delete the old entry from HealthKit
-                healthManager.deleteFromHealthKit(oldEntry) { success, error in
-                    if success {
-                        print("✅ Successfully deleted old entry from Apple Health")
-                        // Then save the new entry to HealthKit
-                        self.healthManager.saveToHealthKit(entry) { success, error in
-                            if success {
-                                print("✅ Successfully saved updated entry to Apple Health")
-                            } else if let error = error {
-                                print("❌ Error saving updated entry to Apple Health: \(error.localizedDescription)")
+            var updated = entry
+            // Increment version for manual edits
+            updated.version = oldEntry.version + 1
+            // Persist entry immediately to keep local and UI consistent
+            entries[index] = updated
+
+            // For manual entries with HK write access, perform HK update first to get the new sample UUID,
+            // update local id, then queue backend update using the final id. This keeps both ends in sync.
+            if updated.source == .manual && updated.type != .bmi && healthManager.isWriteAuthorized {
+                print("📤 Syncing updated manual entry to Apple Health, then backend")
+                // Delete old HK sample by old UUID then save new value
+                healthManager.deleteFromHealthKit(byUUID: oldEntry.id, type: updated.type) { success, error in
+                    self.healthManager.saveToHealthKit(updated) { success, error, healthKitUUID in
+                        if success, let hkId = healthKitUUID {
+                            if let idx = self.entries.firstIndex(where: { $0.id == updated.id }) {
+                                self.entries[idx].id = hkId
+                                self.saveEntries()
+                                self.triggerUpdate()
+                            }
+                            // After HK success and id update, send backend update (server matches by client_uuid)
+                            if !updated.type.isCalculated {
+                                var backendUpdated = updated
+                                backendUpdated.id = hkId
+                                print("📤 Queue update to backend (post-HK update): \(backendUpdated.type)")
+                                Task { @MainActor in
+                                    self.metricSyncManager.syncEntry(backendUpdated, operation: .update)
+                                }
+                            }
+                        } else {
+                            if let error = error { print("❌ Error saving updated entry to Apple Health: \(error.localizedDescription)") }
+                            // If HK save fails, still queue backend update with existing id
+                            if !updated.type.isCalculated {
+                                print("📤 Fallback update to backend (HK failed): \(updated.type)")
+                                Task { @MainActor in
+                                    self.metricSyncManager.syncEntry(updated, operation: .update)
+                                }
                             }
                         }
-                    } else if let error = error {
-                        print("❌ Error deleting old entry from Apple Health: \(error.localizedDescription)")
+                    }
+                }
+            } else {
+                // No HK write access: just queue backend update
+                if !updated.type.isCalculated {
+                    print("📤 Queue update to backend: \(updated.type)")
+                    Task { @MainActor in
+                        self.metricSyncManager.syncEntry(updated, operation: .update)
                     }
                 }
             }
             
             // If this is a weight or height entry, recalculate BMI entries
-            if entry.type == .weight || entry.type == .height {
+            if updated.type == .weight || updated.type == .height {
                 recalculateAllDerivedValues()
             }
             
@@ -375,6 +462,8 @@ class StatsHistoryManager: ObservableObject {
             triggerUpdate()
         }
     }
+
+
     
     func getLatestValue(for type: StatType) -> Double? {
         let typeEntries = entries.filter { $0.type == type }
@@ -414,6 +503,15 @@ class StatsHistoryManager: ObservableObject {
             UserDefaults.standard.set(encoded, forKey: saveKey)
         }
     }
+
+    // MARK: - Backend ID persistence helper
+    func setBackendId(forClientUUID clientUUID: UUID, backendId: Int) {
+        if let idx = entries.firstIndex(where: { $0.id == clientUUID }) {
+            entries[idx].backendId = backendId
+            saveEntries()
+            triggerUpdate()
+        }
+    }
     
     private func loadEntries() {
         print("📱 Loading entries from storage...")
@@ -436,8 +534,11 @@ class StatsHistoryManager: ObservableObject {
     // Debug function to clear all entries
     func clearAllEntries() {
         entries.removeAll()
+        appleHealthEntriesSynced = false
+        UserDefaults.standard.removeObject(forKey: saveKey)
         saveEntries()
         triggerUpdate()
+        print("🧹 Cleared all stat entries and UserDefaults data")
     }
     
     // Function to clear only entries from a specific source
